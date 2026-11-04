@@ -1,6 +1,6 @@
 # Chạy baseline LifeMate trên Vast.ai
 
-Runbook này dành cho **train/dev và public test**, chưa phải Docker package cuối gửi BTC. Source archive và dataset là hai file tách riêng; không đưa dataset lên GitHub.
+Runbook này dành cho **train/dev và public test**, chưa phải Docker package cuối gửi BTC. Bundle Vast gồm source và ZIP dataset BTC trong cùng một archive; ZIP được giữ nguyên, không đưa dataset lên GitHub.
 
 ## Chuẩn bị instance
 
@@ -15,17 +15,17 @@ python -c 'import torch; print(torch.__version__, torch.cuda.is_available(), tor
 
 ## Upload và giải nén
 
-Tải lên cùng một thư mục hai artifact: `lifemate-vast-code-<commit>.tar.gz` và `train+public_test.zip`. (Tên archive gồm mã commit ngắn để biết chính xác source đang chạy.) Sau đó trên instance:
+Tải lên một file `lifemate-vast-bundle-<commit>.tar.gz`. Tên file có mã commit ngắn để biết chính xác source đang chạy. Giải nén sẽ tạo thư mục `lifemate/` gồm code và `data/archives/train+public_test.zip`. Trên instance:
 
 ```bash
-tar -xzf lifemate-vast-code-67d75bd.tar.gz
+tar -xzf lifemate-vast-bundle-<commit>.tar.gz
 cd lifemate
-mkdir -p data/archives data/raw
-mv ../train+public_test.zip data/archives/train+public_test.zip
+sha256sum -c SHA256SUMS
+mkdir -p data/raw
 unzip -n -q data/archives/train+public_test.zip 'train+public_test/*' -d data/raw
 ```
 
-Trước khi giải nén, có thể đặt file `SHA256SUMS` cạnh hai artifact rồi chạy `sha256sum -c SHA256SUMS`. Dataset và thư mục giải nén chỉ ở instance của đội; không commit chúng lên GitHub.
+Checksum trong `SHA256SUMS` xác nhận ZIP dữ liệu nguyên vẹn. Dataset và thư mục giải nén chỉ ở instance của đội; không commit chúng lên GitHub.
 
 ## Cài môi trường, tải model và tạo SFT
 
@@ -78,15 +78,16 @@ python scripts/run_inference.py \
 
 Với LoRA, thêm `--adapter models/lifemate-qwen3-4b-lora/final`. Kiểm tra đủ 634 dòng và nộp file JSONL qua portal. Mỗi mẫu phải dưới 30 giây trên máy chấm A30; Vast GPU nhanh hơn không thay thế benchmark A30. Script log latency từng mẫu ở stderr.
 
-## Lệnh tạo artifact trên máy local
+## Cấu trúc sau khi bung bundle
 
-Từ repo đã commit các thay đổi cần đóng gói, tạo code archive không gồm `.git`, data, weights hay kết quả:
-
-```bash
-mkdir -p artifacts/vast_upload
-CODE_REV="$(git rev-parse --short HEAD)"
-git archive --format=tar.gz --prefix=lifemate/ \
-  -o "artifacts/vast_upload/lifemate-vast-code-${CODE_REV}.tar.gz" HEAD
+```text
+lifemate/
+  data/archives/train+public_test.zip  # ZIP gốc BTC, giữ nguyên
+  data/raw/train+public_test/          # tạo bởi lệnh unzip ở trên
+  configs/
+  docs/vast_runbook.md
+  scripts/
+  src/
+  training/
+  SHA256SUMS
 ```
-
-`SHA256SUMS` trong cùng thư mục ghi hash của code archive và dataset zip cần upload riêng.
