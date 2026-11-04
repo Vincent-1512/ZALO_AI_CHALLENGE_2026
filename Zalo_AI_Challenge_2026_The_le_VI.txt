@@ -1,0 +1,634 @@
+                                            Thể lệ cuộc thi
+                                    Zalo AI Challenge 2026
+
+1. Thông tin chung và hiệu lực Thể lệ
+
+1.1. Thông tin Cuộc thi
+
+Tên cuộc thi: Cuộc thi có tên gọi chính thức là “Zalo AI Challenge 2026” (sau đây gọi tắt là “Cuộc
+thi” hoặc “Zalo AI Challenge”).
+
+Zalo AI Challenge 2026 là cuộc thi kỹ năng do Zalo AI tổ chức, nhằm thúc đẩy lĩnh vực khoa học
+dữ liệu và trí tuệ nhân tạo tại Việt Nam.
+
+1.2. Định nghĩa
+
+Trong Thể lệ này, các thuật ngữ dưới đây được hiểu như sau:
+
+“Ban Tổ chức” / “Zalo” / “Chúng tôi”: Là Zalo AI (VNG) - đơn vị tổ chức chịu trách nhiệm triển
+khai, điều hành, xét duyệt và trao giải Cuộc thi.
+
+“Thí sinh” / “Người tham dự” / “Bạn”: Là cá nhân đủ điều kiện theo Thể lệ, đăng ký tham gia
+Cuộc thi với tư cách cá nhân hoặc thành viên Đội thi.
+
+“Đội thi”: Là nhóm Thí sinh được thành lập và tham gia Cuộc thi theo Thể lệ.
+
+“Trang web Cuộc thi”: Là cổng thông tin điện tử chính thức của Zalo AI Challenge tại
+https://challenge.zalo.ai, được sử dụng để đăng ký, nộp bài, công bố kết quả và cập nhật thông tin
+về Cuộc thi.
+
+“Tài khoản Zalo” Là tài khoản cá nhân trên nền tảng Zalo, được sử dụng để đăng ký và xác thực
+danh tính của thí sinh/đội thi.
+
+“Dữ liệu Cuộc thi” Bao gồm các tập dữ liệu huấn luyện, kiểm thử công khai và kiểm thử riêng
+được Ban Tổ chức cung cấp cho mục đích nghiên cứu, phát triển và đánh giá trong khuôn khổ Cuộc
+thi.
+
+“Bài dự thi” / “Tác phẩm Dự thi” Là toàn bộ mã nguồn, mô hình, tài liệu, ý tưởng hoặc sản phẩm
+do thí sinh/đội thi phát triển và nộp trong quá trình tham gia Cuộc thi.
+
+“Mã nguồn thi” Là phần mã được thí sinh phát triển trong quá trình tham gia Cuộc thi, bao gồm
+mã huấn luyện, mã kiểm thử, hoặc bất kỳ đoạn mã nào dùng để sinh ra kết quả dự thi.
+
+“Dữ liệu bên ngoài” Là các bộ dữ liệu hợp pháp do thí sinh tự khai báo và sử dụng thêm trong
+quá trình huấn luyện, theo đúng quy định của Cuộc thi.
+
+
+                                                    1
+“Giải thưởng” Là phần thưởng bằng tiền mặt hoặc hiện vật được Ban Tổ chức trao cho các đội/
+cá nhân đạt thành tích cao theo kết quả được xác nhận hợp lệ.
+
+“Thời gian Cuộc thi” Là toàn bộ khoảng thời gian từ ngày bắt đầu đến ngày công bố kết quả cuối
+cùng, bao gồm các mốc nộp bài và xét giải như được công bố trên Trang web Cuộc thi.
+
+“Dữ liệu cá nhân”: Là dữ liệu số hoặc thông tin dưới dạng khác xác định hoặc giúp xác định một
+con người cụ thể, bao gồm dữ liệu cá nhân cơ bản và dữ liệu cá nhân nhạy cảm.
+
+“Chủ thể dữ liệu”: Là người được Dữ liệu cá nhân phản ánh.
+
+“Pháp luật bảo vệ dữ liệu cá nhân”: Bao gồm tất cả các quy định pháp luật Việt Nam liên quan
+đến hoạt động xử lý và bảo vệ Dữ Liệu Cá Nhân, được sửa đổi, bổ sung theo từng thời điểm bao
+gồm nhưng không giới hạn Luật Bảo Vệ Dữ Liệu Cá Nhân 2025, Nghị định 356/2025/NĐ-CP.
+
+1.3. Hiệu lực và chấp thuận Thể lệ
+
+Hiệu lực của Thể lệ cuộc thi Zalo AI Challenge 2026 (sau đây gọi là “Thể lệ”): Thể lệ này có hiệu
+lực kể từ ngày được Ban Tổ chức công bố chính thức trên các kênh thông tin của Cuộc thi và áp
+dụng cho toàn bộ quá trình tham dự, chấm thi và trao giải của “Zalo AI Challenge 2026”.
+
+Bằng việc đăng ký tham gia Cuộc thi, Thí sinh xác nhận rằng mình đã đọc, hiểu và đồng ý tuân thủ
+toàn bộ nội dung của Thể lệ, bao gồm các quy định cụ thể của từng thử thách được công bố trên
+Trang web Cuộc thi và mọi sửa đổi, bổ sung (nếu có). Thể lệ này là thỏa thuận pháp lý ràng buộc
+giữa Ban Tổ chức và Thí sinh/Đội thi, điều chỉnh toàn bộ quá trình tham gia, chấm thi và trao giải
+Cuộc thi.
+
+Bạn cần đồng ý và tuân thủ quy định của Thể lệ khi tham gia Cuộc thi để được phép gửi Bài dự thi
+và đạt điều kiện nhận Giải thưởng.
+
+Khi tham gia Cuộc thi và tải Dữ liệu Cuộc thi, Bạn đồng ý tuân thủ Điều khoản Dịch vụ của Zalo
+tại https://zalo.vn/dieukhoan/.
+
+2. Điều kiện tham gia đăng ký tài khoản và Đội thi
+
+2.1. Điều kiện tham gia
+
+Để đủ điều kiện tham gia, Bạn phải đáp ứng đầy đủ các điều kiện sau đây:
+
+(i) Có quốc tịch Việt Nam;
+
+(ii) Là chủ tài khoản Zalo hợp lệ; và
+
+(iii) Từ 18 tuổi trở lên hoặc đạt độ tuổi trưởng thành theo quy định tại nơi cư trú (trừ khi Ban Tổ
+chức có thỏa thuận khác và bạn đã có sự đồng ý hợp pháp của phụ huynh/người giám hộ).
+
+                                                2
+Nếu tham gia với tư cách đội nhóm, trưởng nhóm phải đảm bảo rằng tất cả các thành viên trong
+đội đã được thông báo đầy đủ và đồng ý tham gia cuộc thi theo các điều khoản và điều kiện của
+Thể lệ này.
+
+Nếu Bạn tham gia thay mặt cho một công ty, tổ chức giáo dục hoặc pháp nhân khác, với tư cách
+nhân viên, cộng tác viên hoặc đại diện, Thể lệ này sẽ ràng buộc cả Bạn và tổ chức đó. Bạn cam kết
+tổ chức đó đã biết rõ, đồng ý cho phép Bạn tham gia và nhận Giải thưởng (nếu có), và việc tham
+gia không vi phạm quy định nội bộ của tổ chức.
+
+Đối tượng không được tham gia: Nhân viên, cộng tác viên, hoặc bất kỳ cá nhân nào có ký hợp đồng
+lao động, hợp đồng dịch vụ, hoặc đang làm việc cho VNG và các công ty thuộc tập đoàn không
+được phép đăng ký tham gia Cuộc thi dưới bất kỳ hình thức nào.
+
+Ban Tổ chức có quyền xác minh điều kiện tham gia và giải quyết tranh chấp về điều kiện tham gia
+khi có dấu hiệu vi phạm hoặc tùy theo quyết định của Ban Tổ chức.
+
+2.2. Đăng ký và tài khoản
+
+Bạn không cần mua hàng hoặc thanh toán để tham gia Cuộc thi hay nhận Giải thưởng. Để đăng ký,
+Bạn cần tạo tài khoản trên Trang web Cuộc thi trước thời hạn đăng ký và thực hiện nộp bài theo
+hướng dẫn.
+
+Bạn có thể tham gia Cuộc thi với tư cách cá nhân hoặc theo Đội thi. Mỗi cá nhân chỉ được đăng ký
+và tham gia Cuộc thi qua một (01) Tài khoản Zalo duy nhất. Mỗi thành viên phải đăng ký cá nhân
+trước khi tham gia Đội thi.
+
+Mỗi Thí sinh chỉ được tham gia một (01) Đội thi hoặc tham gia với tư cách cá nhân; không được
+đồng thời tham gia nhiều Đội thi hoặc vừa thi cá nhân vừa thi theo Đội thi.
+
+Thí sinh hoặc Đội thi không được phép sử dụng nhiều tài khoản, tài khoản giả hoặc lập nhiều Đội
+thi để nộp Bài dự thi và tranh giải trái với các nguyên tắc trên. Việc mỗi thành viên Đội thi có tài
+khoản riêng để đăng ký và tham gia cùng Đội thi theo Thể lệ không bị coi là vi phạm.
+
+2.3. Thành lập và quản lý Đội thi
+
+Mỗi Đội thi có tối đa năm (05) thành viên (bao gồm đội trưởng).
+
+Đội trưởng có thể xóa hoặc thêm thành viên trong đội và vẫn tuân thủ đầy đủ các điều khoản của
+Thể lệ này.
+
+Các bài đã nộp của các thành viên đã bị xóa khỏi nhóm vẫn được tính cho Đội tại thời điểm cá
+nhân đó nộp.
+
+
+
+                                                 3
+Đội trưởng có thể gửi yêu cầu xóa Đội thi với điều kiện (1) trong Đội thi không còn thành viên nào
+và (2) gửi yêu cầu cho Ban Tổ chức qua địa chỉ email: aichallenge@zalo.me.
+
+2.4. Gộp Đội thi
+
+Việc gộp Đội thi được cho phép và do đội trưởng thực hiện. Đội thi sau khi gộp phải tuân thủ giới
+hạn thành viên và các quy định về Đội thi tại Thể lệ này.
+
+Điều kiện gộp Đội thi: Tổng số lượt nộp bài của Đội thi sau khi gộp không được vượt quá số lượt
+nộp tối đa tính đến thời điểm gộp. Số lượt nộp tối đa được tính bằng: (Số lượt nộp cho phép mỗi
+ngày) × (Số ngày diễn ra Cuộc thi tính đến thời điểm gộp).
+
+3. Hạng mục và thời gian Cuộc thi
+
+Nội dung đề bài, bộ dữ liệu, mô hình huấn luyện sẵn và yêu cầu cụ thể của từng thử thách được
+công bố tại trang thông tin (Portal) của từng thử thách trên Trang web Cuộc thi.
+
+Cuộc thi gồm hai (02) vòng: vòng thi công khai và vòng thi riêng, diễn ra từ tháng 10 đến tháng 12
+năm 2026, theo múi giờ GMT+7, cụ thể:
+
+26/10/2026: Bắt đầu Cuộc thi; công bố bộ phát triển, dữ liệu huấn luyện, dữ liệu kiểm thử công
+khai và phần mềm đánh giá.
+
+16/11/2026: Nộp bài dự thi. Tất cả các đội nộp bài, bao gồm mã huấn luyện, mã kiểm thử và mô
+hình. Hạn chót nộp: 23:59 (GMT+7)
+
+20/11/2026: Công bố bộ kiểm thử riêng. Bảng xếp hạng tạm thời được tính dựa trên kết quả do các
+đội nộp và sẽ được xác minh lại. Thời gian công bố: 9:00 (GMT+7).
+
+23/11/2026: Nộp kết quả cuối cùng. Tất cả các đội nộp kết quả cuối cùng cho bộ kiểm thử riêng.
+Hạn chót nộp: 23:59 (GMT+7)
+
+02/12/2026: Công bố hai (02) đội đứng đầu mỗi đề bài.
+
+12/12/2026: Công bố kết quả chung cuộc.
+
+Ban Tổ chức có thể thay đổi mốc thời gian hoặc bổ sung các hạn chót trung gian trong suốt quá
+trình. Mọi cập nhật sẽ được công bố trên Trang web Cuộc thi, và Người tham dự có trách nhiệm tự
+theo dõi.
+
+Bạn phải tự quy đổi múi giờ tương ứng tại nơi cư trú để đảm bảo nộp đúng hạn.
+
+
+
+
+                                                4
+4. Dữ liệu và tài nguyên được phép sử dụng
+
+4.1. Dữ liệu Cuộc thi
+
+Bộ Dữ liệu Cuộc thi được chia thành ba (03) phần: dữ liệu huấn luyện (training data), dữ liệu kiểm
+thử công khai (public test data) và dữ liệu kiểm thử riêng (private test data).
+
+Về nguyên tắc, Thí sinh nên sử dụng bộ Dữ liệu Cuộc thi để huấn luyện và kiểm định. Ban Tổ chức
+không khuyến khích việc tự thu thập dữ liệu từ nguồn khác.
+
+Bạn được phép sử dụng Dữ liệu Cuộc thi, bao gồm Dữ liệu cá nhân trong bộ dữ liệu, chỉ cho mục
+đích phi thương mại và học thuật, bao gồm: tham gia Cuộc thi; thảo luận trên diễn đàn
+challenge.zalo.ai; nghiên cứu học thuật hoặc giáo dục. Khi sử dụng bộ dữ liệu, Bạn phải trích dẫn
+“challenge.zalo.ai”. Khi kết thúc Thời gian Cuộc thi, Bạn phải tiến hành xóa, hủy Dữ liệu cá nhân
+theo quy định pháp luật về bảo vệ dữ liệu cá nhân, dữ liệu và các quy định pháp luật có liên quan.
+
+Ban Tổ chức không chịu trách nhiệm hay đảm bảo về tính chính xác, quyền sở hữu hay khả năng
+sử dụng dữ liệu cho một mục đích cụ thể nào ngoài mục đích đã nêu trên đây.
+
+4.2. Gán nhãn và ghi chú bổ sung
+
+Thí sinh được phép thêm nhãn phụ (sub-labels) hoặc ghi chú bổ sung cho tập dữ liệu huấn luyện
+được cung cấp. Không được sử dụng thông tin gán nhãn thủ công hoặc dự đoán của con người trên
+bộ dữ liệu kiểm định hoặc kiểm thử để tạo Bài dự thi.
+
+4.3. Bảo mật và hạn chế phân phối dữ liệu
+
+Bạn đồng ý áp dụng các biện pháp hợp lý và phù hợp để ngăn chặn những người không tham gia
+Cuộc thi và/hoặc người chưa chính thức đồng ý với Thể lệ này truy cập, xử lý Dữ liệu Cuộc thi.
+Trong suốt Thời gian Cuộc thi, Bạn không được chia sẻ riêng dữ liệu ra ngoài Đội thi. Bạn không
+được truyền tải, sao chép để cung cấp, xuất bản, phân phối lại hoặc cung cấp cho bên thứ ba bộ Dữ
+liệu Cuộc thi, bao gồm Dữ liệu cá nhân phát sinh từ và liên quan đến Cuộc thi.
+
+Nếu phát hiện và/hoặc nghi ngờ có hành vi truy cập hoặc truyền tải trái phép Dữ liệu Cuộc thi, Bạn
+phải thông báo ngay cho Ban Tổ chức và phối hợp xử lý khắc phục.
+
+4.4. Dữ liệu bên ngoài
+
+Nếu Bạn tham gia hạng mục cho phép sử dụng bộ dữ liệu bên ngoài trong quá trình huấn luyện
+(“Dữ liệu bên ngoài”), bạn phải tuân thủ các quy định sau:
+
+Bộ dữ liệu bên ngoài phải tuân thủ quy định pháp luật hiện hành về trí tuệ nhân tạo, Pháp luật bảo
+vệ dữ liệu cá nhân và không vi phạm thuần phong mỹ tục.
+
+                                                  5
+Trường hợp Bạn tải lên Dữ liệu bên ngoài trong quá trình huấn luyện, Bạn hiểu và đồng ý rằng các
+Dữ liệu bên ngoài này có thể chứa Dữ liệu cá nhân, Bạn xác nhận đã thu thập dữ liệu này tuân thủ
+theo quy định Pháp luật bảo vệ dữ liệu cá nhân và đã có đồng thuận phù hợp theo quy định của
+pháp luật để sử dụng Dữ liệu bên ngoài này. Bạn chịu trách nhiệm cho việc cung cấp, xử lý Dữ liệu
+bên ngoài (nếu có chứa Dữ liệu cá nhân) và có sự đồng thuận của Chủ thể dữ liệu có liên quan cho
+mục đích của Cuộc thi theo quy định của Pháp luật bảo vệ dữ liệu cá nhân.
+
+Trường hợp nhận được yêu cầu từ Ban Tổ chức và/hoặc cơ quan nhà nước có thẩm quyền nhằm
+chứng minh tuân thủ của pháp luật về bảo vệ dữ liệu cá nhân, Đội thi/Thí sinh sẽ phối hợp để cung
+cấp các tài liệu, bằng chứng nhằm chứng minh tuân thủ của mình khi sử dụng Dữ liệu bên ngoài.
+Trường hợp không thể cung cấp tài liệu, bằng chứng chứng minh tuân thủ pháp luật theo yêu cầu
+của Ban Tổ chức, Đội thi phải chấm dứt việc sử dụng và xoá, huỷ Dữ liệu bên ngoài nếu không bài
+thi của Đội thi sẽ bị coi là không hợp lệ.
+
+Dữ liệu được tải lên từ Người tham dự sẽ được lưu trữ, xử lý theo quy định của pháp luật về bảo
+vệ dữ liệu cá nhân, pháp luật về dữ liệu và các quy định pháp luật khác có liên quan.
+
+Bạn hoàn toàn chịu trách nhiệm với việc tải lên, xử lý và sử dụng dữ liệu, Dữ liệu bên ngoài, Dữ
+liệu cá nhân.
+
+4.5. Sử dụng mã nguồn mở
+
+Nếu mô hình của Bạn có sử dụng mã nguồn mở, bạn chỉ được sử dụng các thư viện hoặc mã nguồn
+có giấy phép OSI hợp lệ (xem tại opensource.org), không giới hạn việc sử dụng thương mại, trừ
+trường hợp được chủ sở hữu quyền tác giả hoặc tác giả có thẩm quyền cấp phép đồng ý bằng văn
+bản cho sử dụng theo các điều kiện khác phù hợp với việc tham gia Cuộc thi. Việc sử dụng mã
+nguồn mở phải bảo đảm không làm phát sinh hoạt động truy cập, thu thập, lưu trữ, tiết lộ, cung
+cấp, chuyển giao hoặc xử lý Dữ liệu cá nhân trái với quy định pháp luật, mục đích của Cuộc thi và
+các yêu cầu bảo vệ dữ liệu do Ban Tổ chức quy định.
+
+5. Bài dự thi và quy trình nộp bài
+
+5.1. Giới hạn và yêu cầu nộp bài
+
+Mỗi Đội thi hoặc Thí sinh tham gia với tư cách cá nhân được nộp tối đa năm (05) bài mỗi ngày và
+chỉ được chọn một (01) bài cuối cùng để chấm điểm chính thức.
+
+Bài nộp phải đúng định dạng, đúng yêu cầu kỹ thuật và thời hạn được quy định trên Trang web
+Cuộc thi.
+
+Bài nộp sau thời hạn sẽ không được tính.
+
+
+                                                6
+Bài nộp không hợp lệ nếu không rõ ràng, thiếu, bị chỉnh sửa trái quy định, giả mạo, được gửi gian
+lận.
+
+Thí sinh/Đội thi phải nộp các bài hợp lệ ở từng giai đoạn theo yêu cầu để được xét giải.
+
+5.2. Đóng băng mô hình và nộp giải pháp cuối cùng
+
+Trước khi công bố dữ liệu kiểm thử riêng, Ban Tổ chức sẽ yêu cầu các Đội thi/Thí sinh đóng băng
+mô hình và nộp bản giải pháp cuối cùng, bao gồm mã huấn luyện, mã kiểm thử, mô hình, tài liệu
+mô tả phương pháp và hướng dẫn chạy mã.
+
+Tất cả bài nộp cuối cùng sẽ được tải lên máy chủ do Ban Tổ chức chỉ định; chi tiết kỹ thuật sẽ được
+thông báo trước khi Cuộc thi bắt đầu. Sẽ có giới hạn thời gian chạy mô hình đối với dữ liệu kiểm
+thử riêng, được công bố kèm mô tả chủ đề từng hạng mục.
+
+6. Chấm điểm xếp hạng và xác minh kết quả
+
+6.1. Chấm điểm và xếp hạng
+
+Mỗi bài dự thi sẽ được chấm điểm và xếp hạng theo thang đánh giá (evaluation metric) trên Trang
+web Cuộc thi. Trong thời gian thi, bảng xếp hạng công khai (public leaderboard) sẽ được cập nhật
+theo thời gian thực theo kết quả trên tập kiểm thử công khai (nếu có hai bài cùng điểm, bài nộp
+sớm hơn sẽ xếp hạng cao hơn).
+
+Người thắng cuộc được xác định dựa trên kết quả vòng kiểm thử riêng, với điều kiện tuân thủ đầy
+đủ Thể lệ. Nếu người thắng bị loại hoặc từ chối Giải thưởng, người có điểm kế tiếp đủ điều kiện sẽ
+được chọn thay thế.
+
+6.2. Xác minh kết quả
+
+Khi nộp kết quả trên dữ liệu kiểm thử riêng, Ban Tổ chức sẽ kiểm tra và so sánh với kết quả từ bản
+mô hình đã đóng băng.
+
+Ban Tổ chức có thể yêu cầu người thắng cuộc tiềm năng cung cấp mã nguồn và tài liệu chứng minh
+tuân thủ quy định trước khi xác nhận kết quả.
+
+Bảng xếp hạng chính thức sẽ được công bố tại Trang web Cuộc thi.
+
+7. Giải thưởng và thủ tục nhận thưởng
+
+7.1. Cơ cấu Giải thưởng
+
+Mỗi đề bài có cơ cấu giải thưởng như sau:
+
+Giải Nhất của mỗi đề bài: 90.412.000 VND tiền mặt (tương đương 3.500 USD*)
+
+                                                7
+Giải Nhì của mỗi đề bài: 64.580.000 VND tiền mặt (tương đương 2.500 USD*)
+
+*Quy đổi dựa trên tỷ giá bình quân mua/bán của Ngân hàng TMCP Hàng Hải Việt Nam ngày
+23/10/2026.
+
+Ban Tổ chức sẽ khấu trừ các loại thuế theo quy định của pháp luật Việt Nam trước khi trao Giải
+thưởng cho Thí sinh thắng giải.
+
+Giải thưởng được công bố trên Trang web Cuộc thi, chỉ có hiệu lực trong thời gian quy định.
+Cơ hội thắng phụ thuộc vào số lượng bài hợp lệ và trình độ của thí sinh.
+
+7.2. Thông báo và xác nhận nhận thưởng
+
+Người thắng cuộc tiềm năng sẽ được thông báo qua email, điện thoại và ứng dụng Zalo.
+
+Người thắng cuộc tiềm năng sẽ mất quyền nhận Giải thưởng nếu: (i) không phản hồi trong một
+(01) tuần kể từ lần liên hệ đầu tiên; hoặc (ii) thông báo không muốn nhận Giải thưởng trong vòng
+một (01) tuần sau khi Cuộc thi kết thúc.
+
+Để được trao Giải thưởng, người thắng phải thực hiện đầy đủ các nghĩa vụ sau:
+
+(a) Gửi cho Ban Tổ chức mã nguồn phần mềm cuối cùng dùng để tạo bài thắng cuộc, kèm tài liệu
+mô tả, hướng dẫn chạy và tài nguyên cần thiết;
+
+(b) Cấp phép cho Ban Tổ chức sử dụng bài thắng cuộc theo Mục 8 của Thể lệ;
+
+(c) Ký và nộp lại toàn bộ giấy tờ xác nhận nhận Giải thưởng, bao gồm (i) chứng nhận hợp lệ; (ii)
+giấy phép, biên bản, cam kết khác nếu có.
+
+Người thắng phải nộp đầy đủ hồ sơ nhận thưởng trong hai (02) tuần kể từ ngày nhận thông báo;
+nếu không, Giải thưởng sẽ bị hủy. Giải thưởng được trao trong vòng ba mươi (30) ngày kể từ khi
+Ban Tổ chức nhận đủ hồ sơ. Không được chuyển nhượng hoặc nhường lại Giải thưởng.
+
+7.3. Thuế
+
+Mọi loại thuế liên quan đến giải thưởng là trách nhiệm của người thắng cuộc, trừ trường hợp pháp
+luật có quy định khác.
+
+8. Sở hữu trí tuệ và chia sẻ mã nguồn
+
+8.1. Quyền sở hữu và quyền sử dụng Bài dự thi
+
+Tác phẩm Dự thi thuộc quyền sở hữu của tác giả; tuy nhiên, Thí sinh/Đội thi trao cho Ban Tổ chức
+quyền không độc quyền, không giới hạn thời gian, không thu phí để sử dụng, trích dẫn, trình bày,
+
+
+
+                                                 8
+công bố hoặc phát hành Tác phẩm Dự thi cho mục đích nghiên cứu, quảng bá, giáo dục và truyền
+thông liên quan đến Cuộc thi mà không cần thêm sự chấp thuận hoặc trả phí bổ sung.
+
+8.2. Chia sẻ mã nguồn
+
+Trừ khi được phép rõ ràng trên Trang web Cuộc thi hoặc trong quy định cụ thể của từng thử thách,
+trong suốt Thời gian Cuộc thi, Bạn không được chia sẻ riêng Mã nguồn thi hoặc mã thực thi được
+phát triển dựa trên Dữ liệu Cuộc thi ra ngoài Đội thi. Quy định này bao gồm việc chia sẻ giữa các
+Đội thi khác nhau, trừ khi các Đội thi đã được gộp hợp lệ.
+
+Trừ các trường hợp được phép chia sẻ riêng nêu trên, trong suốt Thời gian Cuộc thi, việc chia sẻ
+Mã nguồn thi chỉ được chấp nhận nếu được công khai cho tất cả Thí sinh trên diễn đàn chính thức
+của Cuộc thi. Việc công khai mã không được vi phạm quyền sở hữu trí tuệ của bên thứ ba hoặc các
+hạn chế về chia sẻ Dữ liệu Cuộc thi. Khi chia sẻ công khai, Bạn mặc nhiên chấp thuận cấp phép
+mã đó theo giấy phép mã nguồn mở được Open Source Initiative (OSI) công nhận, không giới hạn
+việc sử dụng thương mại.
+
+Khuyến khích các Thí sinh, đặc biệt là các Đội thi/Thí sinh thắng cuộc, công khai giải pháp (mã
+nguồn) sau khi Cuộc thi kết thúc nhằm đóng góp cho sự phát triển của lĩnh vực trí tuệ nhân tạo (AI)
+tại Việt Nam.
+
+9. Hành vi bị cấm và xử lý vi phạm
+
+9.1. Hành vi bị cấm
+
+Thí sinh phải tuân thủ tinh thần và quy định của Thể lệ Cuộc thi. Nghiêm cấm hành vi gian lận, giả
+mạo, đe dọa, lừa đảo, quấy rối, sử dụng công cụ không được phép, cố ý phá hoại Trang web Cuộc
+thi hoặc gây ảnh hưởng tiêu cực đến các Thí sinh khác, đến tính công bằng và uy tín của Cuộc thi.
+
+Thí sinh không được cung cấp thông tin sai lệch về danh tính, nơi cư trú, địa chỉ, số điện thoại,
+email, quyền sở hữu hoặc bất kỳ thông tin nào khác liên quan đến Cuộc thi; sử dụng dữ liệu không
+đúng mục đích hoặc vượt phạm vi cho phép; hoặc vi phạm các quy định khác của Thể lệ.
+
+9.2. Xử lý vi phạm và khắc phục
+
+Mọi hành vi gian lận hoặc vi phạm Thể lệ có thể dẫn đến việc bị loại ngay lập tức theo quyết định
+của Ban Tổ chức. Ban Tổ chức có quyền loại bỏ bài nộp không đạt yêu cầu, tạm dừng hoặc đình
+chỉ việc tham gia, hủy kết quả và/hoặc xóa Thí sinh/Đội thi vi phạm khỏi bảng xếp hạng.
+
+Đối với vi phạm có thể khắc phục, Ban Tổ chức có thể cho phép hoặc yêu cầu Thí sinh/Đội thi
+khắc phục theo quy định của Thể lệ hoặc theo quyết định của Ban Tổ chức. Mọi Giải thưởng đều
+được Ban Tổ chức kiểm tra tính hợp lệ và việc tuân thủ Thể lệ. Nếu bài thắng cuộc vi phạm quy
+
+                                                9
+định và có thể khắc phục, Ban Tổ chức có thể yêu cầu khắc phục trong một (01) tuần, bao gồm xử
+lý xung đột giấy phép, xóa phần mềm vi phạm hoặc bổ sung nghĩa vụ còn thiếu.
+
+Hành vi cố ý phá hoại Trang web Cuộc thi hoặc gian lận có thể bị xử lý hình sự và dân sự theo
+pháp luật Việt Nam.
+
+10. Thu thập, sử dụng và bảo vệ thông tin cá nhân, Dữ liệu cá nhân
+
+10.1. Phạm vi và mục đích thu thập thông tin
+
+Bằng việc đăng ký tham gia Cuộc thi, Người tham dự hiểu và đồng ý rằng Ban Tổ chức có quyền
+thu thập, lưu trữ, sử dụng và xử lý thông tin cá nhân, Dữ liệu cá nhân liên quan đến quá trình đăng
+ký, tham gia và trao giải của Cuộc thi cho các mục đích sau:
+
+-   Xác minh Người tham dự đăng ký và tham gia Cuộc thi: Chúng tôi sử dụng thông tin Người
+    tham cung cấp dự để xác minh Thí sinh/ Đội thi nhằm phục vụ việc đăng ký, tham gia của Cuộc
+    thi bao gồm nhưng không giới hạn việc xác minh điều kiện tham gia, tính hợp lệ của bài dự thi
+    và phát hiện, ngăn chặn các hành vi giả mạo, vi phạm thể lệ và/hoặc gây ảnh hưởng đến hệ
+    thống chấm thi;
+
+-   Thông báo thông tin Cuộc thi tới Thí sinh/ Đội thi: Chúng tôi sử dụng thông tin Thí sinh/
+    Đội thi để liên hệ và thông báo về thông tin, tiến trình của Cuộc thi;
+
+-   Đánh giá và xét giải thưởng: Chúng tôi sử dụng thông tin Thí sinh/ Đội thi để chấm điểm,
+    công bố kết quả, trao thưởng và thực hiện các thủ tục pháp lý có liên quan;
+
+-   Truyền thông và quảng bá Cuộc thi: Chúng tôi sử dụng tên, thông tin và hình ảnh Thí
+    sinh/Đội thi, bao gồm cả Thí sinh/Đội thi không đạt giải, để công bố, giới thiệu, truyền thông
+    và đăng tải trên báo chí, truyền hình và các kênh của đối tác trong phạm vi liên quan đến Cuộc
+    thi và các chương trình, sự kiện, hoạt động liên quan. Người tham dự đồng ý để Ban Tổ chức
+    và các công ty liên kết sử dụng tên và hình ảnh của mình trong phạm vi nêu trên mà không phải
+    trả thêm thù lao, trừ trường hợp pháp luật có quy định khác;
+
+-   Phát triển và cải thiện chất lượng Cuộc thi: Chúng tôi sử dụng thông tin Thí sinh/ Đội thi
+    cung cấp để nâng cao chất lượng, tối ưu hóa, xử lý kỹ thuật, nâng cao chất lượng vận hành,
+    đảm bảo an ninh hệ thống của nền tảng và quy trình tổ chức của Cuộc thi; và
+
+-   Tuân thủ quy định pháp luật: bao gồm yêu cầu từ cơ quan nhà nước có thẩm quyền hoặc
+    phục vụ công tác kiểm toán, báo cáo.
+
+
+
+
+                                                 10
+10.2. Loại thông tin được thu thập
+
+a. Dữ liệu cá nhân cơ bản do Người tham dự cung cấp, bao gồm: Thông tin do Thí sinh cung cấp
+nhằm định danh của Thí sinh khi khởi tạo Tài khoản cũng như trong suốt quá trình cuộc thi, bao
+gồm: Số điện thoại, họ và tên, ngày tháng năm sinh, giới tính, thông tin CMND/CCCD/Hộ chiếu,
+mã số thuế, hình ảnh cá nhân, thư điện tử (Email); địa chỉ thành phố sinh sống; thông tin nơi đã
+/đang theo học; và
+
+Thông tin về Đội thi được cung cấp bao gồm tên đội, danh sách thành viên, vai trò, và thông tin
+liên hệ. Người thực hiện cung cấp Dữ liệu cá nhân của Đội thi đảm bảo mọi thành viên trong đôi
+đã có đồng thuận phù hợp theo quy định của Pháp luật bảo vệ dữ liệu cá nhân trước khi cung cấp.
+
+b. Dữ liệu cá nhân nhạy cảm do Người tham dự cung cấp, bao gồm:
+
+Thông tin liên quan tới thanh toán: Các thông tin liên quan đến thanh toán mà Người tham dự chủ
+động cung cấp nhằm thực hiện việc trao giải trong trường hợp Người tham dự đạt giải bao gồm các
+thông tin tài khoản ngân hàng để nhận thưởng.
+
+c. Các dữ liệu khác do Chúng tôi tự động thu thập, bao gồm: Thông tin liên quan đến hệ điều hành,
+thiết bị như là phiên bản, ngôn ngữ mặc định, chất lượng tín hiệu từ Thiết bị, thông tin cookie, mức
+năng lượng, dữ liệu tương tác với ứng dụng, trạng thái kết nối, dữ liệu về sự cố, hiệu suất, hệ điều
+hành, trình duyệt, thông tin mạng và các loại dữ liệu tương tự và hoạt động của Tài khoản khi sử
+dụng Trang web Cuộc thi gồm Thời điểm, tần suất Tài khoản hoạt động trên Trang web Cuộc thi,
+các hoạt động mà Người tham dự thực hiện thông qua Tài khoản, báo cáo sự cố.
+
+10.3. Chia sẻ, lưu trữ và xử lý Dữ liệu cá nhân
+
+Người tham dự hiểu và đồng thuận rằng Ban Tổ chức không chia sẻ, tiết lộ hoặc chuyển giao thông
+tin của Thí sinh cho bất kỳ bên thứ ba nào, trừ các trường hợp sau:
+
+-   Có sự đồng thuận của Thí sinh/ Đội thi nhằm phục vụ các mục đích trong Thể lệ;
+
+-   Theo yêu cầu hợp pháp của cơ quan có thẩm quyền;
+
+-   Khi việc chia sẻ là cần thiết cho mục đích tổ chức, xét giải hoặc truyền thông Cuộc thi, và bên
+    nhận thông tin có nghĩa vụ bảo mật tương ứng;
+
+-   Công bố tên, hình ảnh, thông tin cá nhân (ở mức cần thiết) của thí sinh/đội thi trên các kênh
+    truyền thông chính thức liên quan đến Cuộc thi và các chương trình, sự kiện, hoạt động liên
+    quan theo mục đích được đề cập tại Thể lệ này; và
+
+-   Trường hợp khác theo quy định của pháp luật.
+
+
+
+                                                11
+Trong các trường hợp cần chia sẻ thông tin cá nhân, Dữ liệu cá nhân của Người tham dự cho bên
+thứ ba, Ban Tổ chức sẽ đảm bảo các dữ liệu này chỉ được lưu trữ trong thời gian cần thiết để phục
+vụ cho mục đích theo Thể lệ của Cuộc thi và được bảo mật tương ứng quy định của Thể lệ này,
+theo sự đồng thuận của Người tham dự và/hoặc theo quy định của pháp luật hiện hành.
+
+Việc lưu trữ và xử lý Dữ liệu cá nhân theo Thể lệ sẽ được Ban Tổ chức thực hiện tuân thủ pháp
+luật về bảo vệ dữ liệu cá nhân, dữ liệu và các quy định pháp luật có liên quan.
+
+10.4. Thực hiện quyền của Chủ thể dữ liệu
+
+Thí sinh có quyền thực hiện các quyền của Chủ thể dữ liệu như:
+
+-   Yêu cầu truy cập, chỉnh sửa hoặc cập nhật thông tin cá nhân do mình cung cấp;
+
+-   Yêu cầu Ban Tổ chức xóa, huỷ hoặc ngừng xử lý dữ liệu trong trường hợp không còn tham gia
+    Cuộc thi; và
+
+-   Yêu cầu khác theo quy định của pháp luật hiện hành.
+
+Thí sinh liên hệ với Ban Tổ chức qua địa chỉ email: aichallenge@zalo.me để thực hiện các quyền
+liên quan đến thông tin cá nhân của mình và thực hiện theo phản hồi của Ban Tổ chức.
+
+10.5. Biện pháp bảo mật
+
+Ban Tổ chức cam kết áp dụng các biện pháp kỹ thuật và tổ chức cần thiết để bảo vệ Dữ liệu cá
+nhân của Thí sinh khỏi mất mát, truy cập trái phép, thay đổi, tiết lộ hoặc phá hủy. Mọi hoạt động
+xử lý Dữ liệu cá nhân đều tuân thủ quy định của Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15,
+Nghị định số 356/2025/NĐ-CP và các quy định pháp luật Việt Nam có liên quan.
+
+10.6. Quảng bá và liên hệ
+
+Người tham dự hiểu và đồng thuận Ban Tổ chức có thể gửi thông báo, thư mời, hoặc thông tin
+quảng bá về Cuộc thi và các chương trình, sự kiện, hoạt động về trí tuệ nhân tạo (AI) có liên quan
+qua thư điện tử (email), ứng dụng Zalo và các kênh truyền thông của Ban Tổ chức.
+Tần suất và nội dung gửi sẽ được kiểm soát tuân thủ quy định của pháp luật về quảng cáo.
+
+11. Cam kết bồi thường và giới hạn trách nhiệm
+
+11.1. Cam kết và bồi thường
+
+Bạn cam kết rằng bài dự thi là sản phẩm gốc của mình, không vi phạm bản quyền hoặc quyền sở
+hữu trí tuệ của bất kỳ bên thứ ba nào.
+
+Bạn đồng ý bồi thường và bảo vệ Ban Tổ chức trước mọi khiếu nại, thiệt hại, chi phí phát sinh do:
+
+
+                                                12
+(a) Bài dự thi vi phạm bản quyền, thương hiệu, sáng chế và/hoặc nghĩa vụ bảo mật của người khác;
+
+(b) Cung cấp thông tin sai lệch; Sử dụng Dữ liệu Cuộc thi, Dữ liệu bên ngoài, Dữ liệu cá nhân trái
+Thể lệ hoặc trái quy định pháp luật;
+
+(c) Không tuân thủ Thể lệ hoặc pháp luật;
+
+(d) Khiếu nại từ bên thứ ba liên quan đến bạn;
+
+(e) Việc bạn nhận, sử dụng hoặc lạm dụng giải thưởng.
+
+Trong trường hợp phát sinh tranh chấp, khiếu nại, khiếu kiện và/hoặc yêu cầu bồi thường liên quan
+đến và phát sinh từ các dữ liệu do Bạn tải lên, xử lý và sử dụng, Bạn sẽ bảo vệ Ban Tổ chức (bao
+gồm nhân viên, cán bộ, đại lý) trước mọi khiếu nại phát sinh từ và liên quan đến việc sử dụng dữ
+liệu, Dữ liệu cá nhân, bao gồm nhưng không giới hạn việc sao chép, sử dụng trái phép tài liệu có
+bản quyền.
+
+11.2. Miễn trừ trách nhiệm
+
+Bạn miễn trừ Ban Tổ chức khỏi mọi trách nhiệm liên quan đến:
+
+(a) Lỗi kỹ thuật, lỗi Trang web Cuộc thi hoặc hệ thống, bao gồm lỗi mạng, gián đoạn kết nối, lỗi
+truyền tải, hư hỏng phần mềm/phần cứng hoặc các lỗi do hệ thống Internet gây ra làm ảnh hưởng
+đến việc gửi bài;
+
+(b) Sai sót trong thu thập hoặc xử lý dữ liệu;
+
+(c) Lỗi in ấn, hiển thị hoặc công bố Giải thưởng.
+
+11.3. Quan hệ giữa các bên
+
+Việc tham gia cuộc thi hoặc nhận giải không được xem là hợp đồng lao động hoặc lời mời làm việc
+với Ban Tổ chức.
+
+Bạn xác nhận tham gia hoàn toàn tự nguyện và không hình thành mối quan hệ lao động, ủy thác
+với Ban Tổ chức.
+
+12. Quy định chung
+
+12.1. Thay đổi tạm ngừng hoặc hủy Cuộc thi
+
+Ban tổ chức có toàn quyền xem xét, điều chỉnh, bổ sung hoặc thay đổi Thể lệ Cuộc thi, nội dung
+đề bài, hình thức thi, thời gian tổ chức và cơ cấu giải thưởng trong trường hợp cần thiết, nhằm bảo
+đảm phù hợp với điều kiện thực tế.
+
+
+
+                                                 13
+Mọi thay đổi (nếu có) sẽ được Ban Tổ chức thông báo công khai trên các kênh chính thức của Cuộc
+thi và có hiệu lực kể từ thời điểm đăng tải thông báo.
+
+Nếu Cuộc thi bị ảnh hưởng bởi virus, gian lận, can thiệp trái phép hoặc sự cố kỹ thuật khác khiến
+không thể vận hành bình thường, Ban Tổ chức có quyền hủy, dừng, chỉnh sửa hoặc tạm ngưng
+Cuộc thi.
+
+12.2. Khiếu nại và quyết định của Ban Tổ chức
+
+Mọi khiếu nại liên quan đến kết quả hoặc quá trình tổ chức Cuộc thi chỉ được tiếp nhận trong vòng
+07 (bảy) ngày làm việc kể từ ngày công bố kết quả chính thức.
+
+Ban Tổ chức có quyền từ chối xử lý các khiếu nại được gửi sau thời hạn nêu trên hoặc không kèm
+theo bằng chứng hợp lệ.
+
+Trong mọi trường hợp, quyết định của Ban Tổ chức là quyết định cuối cùng trong các vấn đề liên
+quan đến việc tổ chức, chấm điểm, xét giải, trao thưởng, xử lý vi phạm và giải quyết khiếu nại của
+Cuộc thi; Thí sinh/Đội thi đồng ý chấp thuận quyết định này như điều kiện bắt buộc khi tham gia.
+
+12.3. Luật áp dụng và giải quyết tranh chấp
+
+Trừ khi có quy định khác trong quy định cụ thể của từng thử thách, mọi tranh chấp phát sinh từ
+Thể lệ này sẽ tuân theo pháp luật Việt Nam. Các bên đồng ý chịu thẩm quyền xét xử của tòa án
+Việt Nam. Nếu có điều khoản nào trong Thể lệ bị vô hiệu, các điều khoản còn lại vẫn có hiệu lực.
+
+12.4. Liên hệ
+
+Mọi yêu cầu, thông báo và khiếu nại liên quan đến Cuộc thi được gửi tới Ban Tổ chức qua địa chỉ
+email aichallenge@zalo.me.
+
+
+
+
+                                                14
+
