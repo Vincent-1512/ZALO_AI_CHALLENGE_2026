@@ -77,6 +77,7 @@ def parse_args():
     parser.add_argument("--asr-model")
     parser.add_argument("--llm-model")
     parser.add_argument("--adapter")
+    parser.add_argument("--limit-samples", type=int, default=0)
     parser.add_argument("--report", default="reports/runs/dev_metrics.json")
     return parser.parse_args()
 
@@ -183,6 +184,9 @@ def main() -> None:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     config, split, tool_env, catalog, index, state_hash, rows = load_evaluation_data(args)
+    if args.limit_samples > 0:
+        rows = rows[: args.limit_samples]
+        print(f"Evaluating first {len(rows)} dev samples", flush=True)
     asr, agent = load_agent(config, args)
     runtime = (tool_env, split, catalog, index, state_hash, asr, agent, config["limits"]["max_tool_steps"])
     results = []
