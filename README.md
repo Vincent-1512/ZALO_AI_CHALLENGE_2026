@@ -7,7 +7,8 @@ Workspace của đội 5 người cho bài toán nghe yêu cầu tiếng Việt 
 1. [Chiến lược chất lượng](docs/plans/lifemate_strategy.md): ưu tiên thí nghiệm, khả năng dùng app mới, đánh giá và chọn mô hình.
 2. [Kế hoạch triển khai](docs/plans/implementation_plan.md): phân công, lịch từng ngày, GPU, Docker và checklist nộp bài.
 3. [Yêu cầu LifeMate](docs/competition/lifemate.md): dữ liệu, luật kỹ thuật, chấm điểm và cách nộp.
-4. [Thông tin cuộc thi](docs/competition/overview.md) và [thể lệ nguồn](docs/competition/regulations/).
+4. [Runbook Vast.ai](docs/vast_runbook.md): đóng gói, upload dữ liệu, smoke train và chạy baseline.
+5. [Thông tin cuộc thi](docs/competition/overview.md) và [thể lệ nguồn](docs/competition/regulations/).
 
 ## Trạng thái ngày 04/11/2026
 
