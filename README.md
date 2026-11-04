@@ -12,9 +12,10 @@ Workspace của đội 5 người cho bài toán nghe yêu cầu tiếng Việt 
 ## Trạng thái ngày 04/11/2026
 
 - Đã nhận và giải nén kit v3.2.0: 1.545 train, 634 public test.
-- Đã kiểm kê metadata và lập chiến lược; chưa có mã agent, checkpoint, điểm baseline hay kết quả huấn luyện.
+- Đã kiểm kê audio/history/catalog và chốt thiết kế baseline ASR → schema-aware agent → ToolEnv; chi tiết ở [kiểm kê dữ liệu](docs/analysis/dataset_audit.md) và [thiết kế baseline](docs/baseline_design.md).
+- Đã chuẩn bị runner offline, pipeline tạo trajectory SFT và script QLoRA; chưa tải model, chạy GPU, có checkpoint, điểm baseline hoặc kết quả huấn luyện.
 - Bộ kiểm tra schema trong kit chưa được xác nhận là scorer đầy đủ. Hình công thức Evaluation còn cần bổ sung.
-- Cần cấu hình/quyền truy cập GPU thuê, lịch làm mỗi người và ngân sách để chốt kế hoạch chạy.
+- Đội đã có Vax.ai để chạy GPU; chưa xác nhận GPU/VRAM của instance. Máy local hiện không có CUDA nên chưa thể tải model, chạy rollout hay train tại đây.
 
 ## Cấu trúc
 
@@ -22,6 +23,9 @@ Workspace của đội 5 người cho bài toán nghe yêu cầu tiếng Việt 
 README.md
 .gitignore
 docs/
+  analysis/
+    dataset_audit.md
+  baseline_design.md
   competition/
     lifemate.md
     overview.md
@@ -29,6 +33,11 @@ docs/
   plans/
     implementation_plan.md
     lifemate_strategy.md
+src/lifemate/                 # runner, prompts, model adapters
+scripts/                      # inference và model download
+training/                     # tạo SFT trajectory và QLoRA
+configs/baseline.json         # model revisions, giới hạn runtime và train
+requirements-*.txt            # môi trường inference / train
 data/
   README.md                  # Hướng dẫn đặt dữ liệu, được commit
   archives/                  # Gói tải BTC, chỉ local
@@ -36,6 +45,8 @@ data/
 ```
 
 Clone repo không tải kèm dataset. Thành viên đã đăng ký lấy kit từ portal BTC và đặt theo [hướng dẫn dữ liệu](data/README.md). Không commit dữ liệu thi, trọng số, secrets hoặc kết quả chứa nội dung dữ liệu.
+
+Lệnh chuẩn bị SFT, train LoRA và chạy public được ghi ở [thiết kế baseline](docs/baseline_design.md). Các model phải tải theo revision pin rồi đóng gói offline; inference không gọi dịch vụ ngoài.
 
 ## Các mốc nộp bài
 

@@ -1,0 +1,2 @@
+-r requirements-inference.txt
+bitsandbytes==0.47.0

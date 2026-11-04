@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import json
+import re
+from fractions import Fraction
+from pathlib import Path
+from typing import Any
+
+
+def _torch_dtype(torch, use_gpu: bool):
+    return torch.float16 if use_gpu else torch.float32
+
+
+class SpeechRecognizer:
+    def __init__(self, model_path: str | Path, batch_size: int = 4, sample_rate: int = 16000):
+        import torch
+        from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
+
+        self.torch = torch
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        path = str(model_path)
+        self.processor = AutoProcessor.from_pretrained(path, local_files_only=True)
+        dtype = _torch_dtype(torch, self.device == "cuda")
+        self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
+            path, torch_dtype=dtype, low_cpu_mem_usage=True, local_files_only=True
+        ).to(self.device).eval()
+        self.forced_decoder_ids = self.processor.get_decoder_prompt_ids(language="vi", task="transcribe")
+        self.batch_size = batch_size
+        self.sample_rate = sample_rate
+
+    def _read_audio(self, path: str | Path):
+        import numpy as np
+        import soundfile as sf
+        from scipy.signal import resample_poly
+
+        audio, rate = sf.read(str(path), dtype="float32", always_2d=True)
+        audio = audio.mean(axis=1)
+        if rate != self.sample_rate:
+            ratio = Fraction(self.sample_rate, rate)
+            audio = resample_poly(audio, ratio.numerator, ratio.denominator).astype(np.float32)
+        if not len(audio) or not np.isfinite(audio).all():
+            raise ValueError(f"Invalid audio data: {path}")
+        return audio
+
+    def transcribe_many(self, paths: list[Path], max_new_tokens: int = 128) -> list[str]:
+        if not paths:
+            return []
+        audios = [self._read_audio(path) for path in paths]
+        results: list[str] = []
+        for start in range(0, len(audios), self.batch_size):
+            batch = audios[start : start + self.batch_size]
+            inputs = self.processor(
+                batch, sampling_rate=self.sample_rate, padding="longest", return_tensors="pt"
+            )
+            features = inputs.input_features.to(self.device, dtype=self.model.dtype)
+            with self.torch.inference_mode():
+                generated = self.model.generate(
+                    features,
+                    forced_decoder_ids=self.forced_decoder_ids,
+                    do_sample=False,
+                    num_beams=1,
+                    max_new_tokens=max_new_tokens,
+                )
+            results.extend(self.processor.batch_decode(generated, skip_special_tokens=True))
+        return [text.strip() for text in results]
+
+
+def parse_action(output: str) -> dict[str, Any] | None:
+    text = output.strip()
+    if "<tool_call>" in text:
+        text = text.split("<tool_call>", 1)[1].split("</tool_call>", 1)[0].strip()
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE)
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if match is None:
+            return None
+        try:
+            value = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(value, dict):
+        return None
+    if value.get("action") == "stop":
+        return {"action": "stop"}
+    if value.get("action") == "call":
+        name, arguments = value.get("name"), value.get("arguments")
+        if isinstance(name, str) and isinstance(arguments, dict):
+            return {"action": "call", "name": name, "arguments": arguments}
+    if isinstance(value.get("name"), str) and isinstance(value.get("arguments"), dict):
+        return {"action": "call", "name": value["name"], "arguments": value["arguments"]}
+    return None
+
+
+def _load_causal_model(path: str, device: str, dtype):
+    from transformers import AutoModelForCausalLM
+
+    return AutoModelForCausalLM.from_pretrained(
+        path,
+        torch_dtype=dtype,
+        low_cpu_mem_usage=True,
+        local_files_only=True,
+        device_map="auto" if device == "cuda" else None,
+    )
+
+
+class ToolAgent:
+    def __init__(
+        self,
+        model_path: str | Path,
+        adapter_path: str | Path | None,
+        max_context_tokens: int,
+        max_new_tokens: int,
+    ):
+        import torch
+        from transformers import AutoTokenizer
+
+        self.torch = torch
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        path = str(model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        dtype = _torch_dtype(torch, self.device == "cuda")
+        self.model = _load_causal_model(path, self.device, dtype)
+        if adapter_path:
+            from peft import PeftModel
+
+            self.model = PeftModel.from_pretrained(self.model, str(adapter_path), is_trainable=False)
+        self.model.eval()
+        self.max_input_tokens = max_context_tokens - max_new_tokens
+        self.max_new_tokens = max_new_tokens
+
+    def predict(self, messages: list[dict[str, str]]) -> dict[str, Any] | None:
+        from .prompts import fit_messages
+
+        input_ids = fit_messages(messages, self.tokenizer, self.max_input_tokens)
+        input_ids = input_ids.to(self.model.device)
+        with self.torch.inference_mode():
+            output_ids = self.model.generate(
+                input_ids,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=False,
+                num_beams=1,
+                pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                use_cache=True,
+            )
+        new_tokens = output_ids[0, input_ids.shape[-1] :]
+        return parse_action(self.tokenizer.decode(new_tokens, skip_special_tokens=True))

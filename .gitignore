@@ -14,6 +14,8 @@ private_test/
 /outputs/
 /runs/
 /artifacts/
+/result/
+/reports/runs/
 
 # Local environments and secrets.
 .venv/

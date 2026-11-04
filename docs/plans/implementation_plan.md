@@ -132,7 +132,7 @@ Nếu đến hết 06/11 chưa có baseline hoàn chỉnh: dừng thử mô hìn
 
 ## 6. Danh sách việc triển khai có thể giao ngay
 
-Các đường dẫn sau là **cấu trúc dự kiến**, chưa tạo mã nguồn trong phiên lập kế hoạch. Tận dụng module sẵn có của BTC; không viết lại evaluator hay ToolEnv.
+Các đường dẫn sau là **đầu ra dự kiến ban đầu**. Cập nhật thực thi bên dưới ghi rõ phần nào đã có file, phần nào còn cần GPU hoặc kit BTC. Tận dụng module sẵn có của BTC; không viết lại evaluator hay ToolEnv.
 
 | ID | Việc và file dự kiến | Chủ trì | Phụ thuộc | Bằng chứng hoàn thành |
 |---|---|---|---|---|
@@ -149,6 +149,22 @@ Các đường dẫn sau là **cấu trúc dự kiến**, chưa tạo mã nguồ
 | T11 | `Dockerfile`, `run.sh`, dependency lock, model manifest | P5 | T07 | Máy Linux sạch load archive, tắt mạng, mount test tại `/data`, tạo `result/submission.jsonl` theo BTC |
 | T12 | `docs/method.md`, `docs/reproduce.md`, `release/manifest.json` | P1 + cả đội | T08–T11 | Người khác chạy được từ archive, không cần hỏi tác giả; checksum/version/model/data đủ |
 | T13 | Hồ sơ portal và receipt lưu riêng | P1 | T12 | Link đúng archive, download được, checksum khớp, form xác nhận lần nộp |
+
+### Tiến độ thực tế — cập nhật 04/11/2026
+
+| Task | Trạng thái | Artifact / phần còn thiếu |
+|---|---|---|
+| T01 | Hoàn tất tài liệu nền | `docs/competition/`, kế hoạch và strategy; kiểm kê kit v3.2.0 |
+| T02 | Hoàn tất kiểm kê cấu trúc | `docs/analysis/dataset_audit.md`; split SFT 80/10/10 đã tạo local, seed 2026, grouped theo transcript yêu cầu chuẩn hóa; data cache không theo dõi bởi Git |
+| T03 | Hoàn tất contract v1 | `docs/baseline_design.md`, mẫu JSONL output và quy tắc history/tool loop |
+| T04 | Code đã chuẩn bị, chưa benchmark | `src/lifemate/models.py`; cần tải PhoWhisper và đo ASR/latency trên A30 |
+| T05–T07 | Runner đã chuẩn bị, chưa chạy trên GPU | `src/lifemate/runner.py`, `prompts.py`, `data.py`, `scripts/run_inference.py`; cần xác nhận layout private mount và chạy end-to-end |
+| T08 | Evaluator chẩn đoán đã chuẩn bị, chưa chạy | `training/evaluate_dev.py`; cần CUDA. Chưa có công thức tổng đầy đủ dạng text/scorer BTC |
+| T09 | Data prep hoàn tất; LoRA script chưa chạy | `training/prepare_sft.py`, `training/train_lora.py`; kế tiếp là tải model, smoke run rồi train đủ trên Vax.ai |
+| T10 | Chưa bắt đầu | Chỉ mở nhánh ASR fine-tune nếu rollout chứng minh ASR là nguồn mất điểm |
+| T11–T13 | Chưa bắt đầu | Docker, artifact checksum, upload Drive/form làm sau khi khóa model và có Docker guide BTC |
+
+**Blocker hiện tại:** máy local không có CUDA; chưa xác nhận GPU/VRAM và storage của instance Vax.ai. Chưa tải weights, chưa có điểm baseline, chưa train và chưa tạo bài nộp. Bước cần đội hỗ trợ tiếp theo là đưa repo cùng dataset local lên Vax.ai sau khi xác nhận instance có CUDA và ít nhất 24 GB VRAM.
 
 Mỗi task chia nhánh/file sở hữu rõ, tích hợp ít nhất mỗi ngày; nhánh release chỉ nhận thay đổi đã có kết quả kiểm tra. Không bắt buộc dùng dịch vụ quản lý công việc mới: một bảng TODO/DOING/DONE trong repo là đủ.
 
@@ -289,11 +305,11 @@ Mục tiêu có kết quả và nộp sớm trong 20–21/11; 22/11 dành kiểm
 ## 15. Thông tin còn cần chốt, không ngăn việc chuẩn bị baseline
 
 - Giờ làm thực tế mỗi người, kỹ năng mạnh/yếu và tên thật tương ứng P1–P5.
-- Ngân sách GPU trần, loại GPU đang thuê, nền tảng chính xác, dung lượng lưu trữ và quyền dùng Docker.
-- Dữ liệu/kit sau đăng nhập: số mẫu, transcript, schema/history semantics, evaluator, thư viện version.
+- Ngân sách GPU trần, GPU/VRAM của instance Vax.ai, dung lượng lưu trữ và quyền dùng Docker.
 - Hướng dẫn Docker chi tiết: entrypoint, output, cold start, version/environment compatibility và kiểu checksum.
 - Phần “data” BTC muốn nhận trong gói Docker; cách chuyển tài nguyên hạn chế khi form yêu cầu link công khai.
-- Giờ phát hành private chính thức và thời gian form Solution Submission mở.
+- Công thức Evaluation đầy đủ hoặc scorer chính thức để đối chiếu metric cục bộ.
+- Giờ phát hành private và thời gian form Solution Submission mở nếu portal có cập nhật mới.
 
 Các thông tin này được P1 xác minh qua portal/diễn đàn hoặc kênh BTC. Kế hoạch chưa gửi bất kỳ email, thuê GPU, chấp nhận điều khoản, công khai dữ liệu hay nộp bài thay đội.
 
