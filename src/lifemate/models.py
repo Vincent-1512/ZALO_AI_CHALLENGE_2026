@@ -137,9 +137,11 @@ class ToolAgent:
 
         input_ids = fit_messages(messages, self.tokenizer, self.max_input_tokens)
         input_ids = input_ids.to(self.model.device)
+        attention_mask = self.torch.ones_like(input_ids)
         with self.torch.inference_mode():
             output_ids = self.model.generate(
                 input_ids,
+                attention_mask=attention_mask,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
                 num_beams=1,

@@ -185,7 +185,14 @@ def main() -> None:
     config, split, tool_env, catalog, index, state_hash, rows = load_evaluation_data(args)
     asr, agent = load_agent(config, args)
     runtime = (tool_env, split, catalog, index, state_hash, asr, agent, config["limits"]["max_tool_steps"])
-    report = build_report([evaluate_sample(row, runtime) for row in rows])
+    results = []
+    started = time.perf_counter()
+    for sample_index, row in enumerate(rows, start=1):
+        results.append(evaluate_sample(row, runtime))
+        if sample_index % 10 == 0 or sample_index == len(rows):
+            elapsed = time.perf_counter() - started
+            print(f"evaluated={sample_index}/{len(rows)} elapsed_seconds={elapsed:.1f}", flush=True)
+    report = build_report(results)
     path = Path(args.report)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
