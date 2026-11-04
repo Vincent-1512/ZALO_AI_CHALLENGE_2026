@@ -2,11 +2,13 @@
 
 Ngày lập: **04/11/2026, giờ Việt Nam (GMT+7)**. Đội: **5 người**, có thể thuê GPU. Đây là kế hoạch đề xuất để triển khai; chưa phải báo cáo đã chạy thử hay đã huấn luyện mô hình.
 
+**Cập nhật sau khi nhận dataset và các hướng dẫn đầy đủ:** đọc [chiến lược nâng chất lượng LifeMate](lifemate_strategy.md) trước khi triển khai. Tài liệu bổ sung đánh giá app-held-out, thiết kế thí nghiệm và tiêu chí chọn mô hình theo dữ liệu thực.
+
 ## 1. Kết quả cần đạt và điểm xuất phát
 
 Mục tiêu là có hệ thống LifeMate hợp lệ sớm, sau đó tăng điểm bằng các thí nghiệm đo được, và nộp giải pháp tái lập được trước hạn. Không có kế hoạch nào bảo đảm điểm tuyệt đối hoặc thứ hạng; các quyết định mô hình cuối cùng phải dựa trên dữ liệu và thời gian chạy thực tế.
 
-Workspace hiện có README và thể lệ VI/EN; **chưa có dataset, development kit, mã nguồn, checkpoint hoặc GPU benchmark**. Không giả định đội đã có pipeline. Cần kiểm kê lại nếu thành viên giữ tài nguyên ở nơi khác.
+Workspace có README, thể lệ VI/EN và gói `data/archives/train+public_test.zip` bản **v3.2.0**. Gói đã được giải nén vào `data/raw/train+public_test/`: **1.545 mẫu train**, **634 public test**, khoảng **1,1 GB** sau giải nén (zip tải về khoảng **836 MB**). Đếm được 5.036 train WAV và 1.933 public WAV vì audio của các lượt lịch sử cũng được tính. Chưa có mã agent hoặc checkpoint. Không đọc trực tiếp bất cứ file nào trong `*_environment/`.
 
 Đầu vào của hệ thống: audio tiếng Việt, ngữ cảnh người dùng, lịch sử hội thoại, danh sách app/công cụ, môi trường thực thi BTC. Đầu ra: `submission.jsonl`, mỗi dòng gồm `id`, `tool_calls`, `state_hash` theo schema BTC.
 
@@ -34,9 +36,11 @@ Nguồn: [LifeMate](https://challenge.zalo.ai/portal/lifemate), các tab Descrip
 | ToolEnv | Đúng **một ToolEnv/mẫu**; mọi lần gọi lên nó phải xuất hiện trong bài nộp | Không clone, reset hay thử nhiều nhánh môi trường để chọn kết quả |
 | API cho inference | Chỉ `validate`, `call`, `get_tool_calls`, `get_state_hash` | Không `get_state`, `states`, `Executor`, `Simulator`; `get_state` chỉ được dùng cho train |
 | Tái lập | Seed cố định; ASR/LLM giải mã xác định | Greedy/temperature 0 theo backend; đo tính ổn định khi chạy lại toàn pipeline |
-| Chấm điểm | Hash cuối sai → mẫu 0; tool-call match còn ảnh hưởng điểm | Sửa lỗi trạng thái trước, giảm tool thừa sau; không chỉ tối ưu transcript hoặc next-token loss |
+| Chấm điểm | Hash cuối sai → mẫu 0; tool-call match cũng được chấm. Mỗi call chỉ ghép một lần; fuzzy cần token-F1 >0.6 sau lowercase và Unicode NFC | Tối ưu state correctness trước, giảm call dư/lỗi schema sau; dùng evaluator BTC làm điểm chính |
 | Ngoài phạm vi | Gold tool list rỗng chỉ đúng khi output rỗng | Phải xử lý out-of-scope, không ép mọi câu thành hành động |
 | Thiếu thông tin | `sys.ask_missing_info` được chấm như công cụ khác | Không tự bịa đối số; có thể hỏi sau các bước hợp lệ trước đó |
+| Match thứ tự | Thứ tự không dùng để ghép tool-call, nhưng vẫn ảnh hưởng state khi replay | Thực thi theo dependency; không xáo call trong môi trường |
+| Tái chấm/hoà điểm | BTC replay `tool_calls` bằng `zaic_tools`; nếu khác, kết quả BTC là cuối. Hoà điểm: tính lại F1 call, bỏ kiểm tra hash; nếu vẫn hoà, latency trung bình thấp hơn thắng | Khóa image, kit, seed và runtime; giữ trace để tái lập |
 
 A30 có 24 GB VRAM theo [NVIDIA](https://www.nvidia.com/en-gb/data-center/products/a30-gpu/). Cần chừa bộ nhớ cho ASR, KV cache và runtime; không xem 24 GB là dung lượng chỉ dành cho LLM.
 
@@ -45,16 +49,16 @@ A30 có 24 GB VRAM theo [NVIDIA](https://www.nvidia.com/en-gb/data-center/produc
 | Mốc | Việc bắt buộc |
 |---|---|
 | Đến 16/11 | Chạy public test và nộp JSONL qua **Submission**; tối đa 5 lần/ngày, quota reset cuối ngày |
-| **16/11, 23:59** | Nộp toàn bộ giải pháp qua **Solution Submission**: Docker package, training code, inference code và data theo hướng dẫn BTC; cung cấp **checksum + link Google Drive công khai** để BTC tải |
+| **16/11, 23:59** | Nộp Docker package hoàn chỉnh gồm training code, inference code và data qua **Solution Submission**; gửi **checksum + link Google Drive công khai** để BTC tải |
 | Gói giải pháp | Tối đa **2 lần nộp**; **chỉ lần cuối được BTC đánh giá** |
-| 20/11 | Phát hành private test; chạy giải pháp đã nộp và đóng băng |
+| **20/11, 09:00** | Theo Submission Guidance trong portal đã đăng nhập, BTC phát hành private test; chạy giải pháp đã nộp và đóng băng |
 | **23/11, 23:59** | Nộp kết quả JSONL private qua Submission |
 | 02/12 | Công bố top 2 mỗi nhánh |
 | 12/12 | Công bố kết quả chung cuộc |
 
-**Có lệch giờ phát hành private:** Submission Guidance và PDF ghi 09:00 ngày 20/11; trang chủ ghi 11:00. Chuẩn bị người trực từ 08:30, xác nhận thông báo mới nhất; hai hạn 23:59 nêu trên thống nhất giữa các nguồn.
+Trang chủ công khai vẫn ghi 11:00 cho private test, nhưng Submission Guidance trong portal đã đăng nhập ghi **09:00**. P1 theo dõi portal; cả đội sẵn sàng từ 08:30.
 
-Thể lệ còn yêu cầu mô tả phương pháp và hướng dẫn chạy. Các phần có quyền truy cập, form nộp và dữ liệu chưa được đọc sau đăng nhập trong phiên lập kế hoạch này.
+Thể lệ còn yêu cầu mô tả phương pháp và hướng dẫn chạy. Sau khi upload gói lên Google Drive, P2 tải lại và kiểm checksum trước khi nộp.
 
 ## 3. Chiến lược kỹ thuật đề xuất
 
@@ -120,8 +124,8 @@ Nhịp làm việc đề xuất: đầu ngày 15 phút chốt đầu ra, giữa 
 | **15/11** | Tổng duyệt và kiểm tra quyền link | Review độc lập manifest/receipt nháp | Trực sửa lỗi | Trực sửa lỗi | Đo toàn bộ public bằng đúng image | Có ứng viên dự phòng, log và checksum trùng bản lưu |
 | **16/11** | Nộp lần 1 mục tiêu trước 12h; xác nhận | Đối chiếu hồ sơ | Trực | Trực | Hỗ trợ tải/chạy nếu BTC yêu cầu | Có bằng chứng tiếp nhận; chỉ dùng lần 2 nếu thật sự cần, mục tiêu trước 18h; hạn cứng 23:59 |
 | **17–19/11** | Theo dõi BTC, giữ nguyên frozen image | Chuẩn bị kiểm tra cấu trúc private | Không thay model | Không thay model | Dựng lệnh chạy chính image đã nộp | GPU, dung lượng, script vận hành và người trực sẵn sàng |
-| **20/11** | Nhận private đúng kênh | Kiểm tra schema/id, không tạo nhãn | Hỗ trợ vận hành | Hỗ trợ vận hành | Chạy frozen image, lưu log/checksum | Có JSONL private lần chạy đầu; báo BTC nếu lỗi tương thích thay vì tự sửa mô hình |
-| **21–22/11** | Nộp sớm, theo dõi tiếp nhận | Kiểm tra coverage/format | Trực | Trực | Kiểm tra tái lập bằng cùng image nếu thời gian cho phép | Có kết quả được portal tiếp nhận, khớp artifact đóng băng |
+| **20/11** | Nhận private lúc 09:00 theo Submission Guidance | Kiểm tra schema/id, không tạo nhãn | Hỗ trợ vận hành | Hỗ trợ vận hành | Chạy frozen image, lưu log/checksum | Có JSONL private lần chạy đầu; báo BTC nếu lỗi tương thích thay vì tự sửa mô hình |
+| **21–22/11** | Nộp kết quả sớm, theo dõi tiếp nhận | Kiểm tra coverage/format | Trực | Trực | Kiểm tra tái lập bằng cùng image nếu thời gian cho phép | Có kết quả được portal tiếp nhận, khớp artifact đóng băng; private leaderboard xếp theo giờ nộp |
 | **23/11** | Xác nhận lần cuối trước 12h | So receipt với đúng file | Trực | Trực | Hỗ trợ lỗi hạ tầng | Hoàn tất trước 23:59; lưu toàn bộ bằng chứng |
 
 Nếu đến hết 06/11 chưa có baseline hoàn chỉnh: dừng thử mô hình mới, P1/P4/P5 cùng sửa đường găng; P3 giữ ASR có sẵn, P2 thu nhỏ bộ train-dev để tái hiện lỗi. Nếu 10/11 chưa có checkpoint vượt baseline: giữ baseline và tập trung correctness, thời gian, Docker.
@@ -174,6 +178,8 @@ Không gán nhãn public/private test để cải thiện model hoặc prompt. K
 | Timeout/OOM | Profile từng pha trên GPU gần máy chấm | Giảm context, số bước/token, backend overhead; cân nhắc ASR nhỏ hơn |
 | Không ổn định | Chạy lại toàn bộ invocation từ đầu cùng image/input | Khóa seed/backend, greedy, số worker, dependency và thứ tự xử lý |
 
+Theo Evaluation, debug theo hai lớp: (1) state hash chính xác — sai thì mẫu 0; (2) độ khớp tool-call theo precision/recall/F1, gồm call dư và call bị schema từ chối. Fuzzy argument phải vượt token-F1 0.6 sau lowercase và Unicode NFC. Mỗi gold/submit call chỉ match tối đa một lần. Out-of-scope chỉ được điểm khi cả gold lẫn dự đoán đều không gọi tool. Dùng evaluator BTC cho công thức tổng thể; không suy trọng số từ ảnh công thức bị thiếu trong bản văn bản.
+
 ## 8. Kế hoạch huấn luyện và thí nghiệm
 
 **Thứ tự:** pretrained baseline → SFT/LoRA agent → train với transcript ASR nhiễu từ train → ASR fine-tune nếu lỗi nghe còn là nút thắt → tối ưu runtime. Không cần huấn luyện từ đầu.
@@ -224,7 +230,7 @@ Mục tiêu nội bộ runtime là có khoảng dư đáng kể dưới 30 giây
 
 P5 chuẩn bị image Linux đúng kiến trúc BTC và GPU stack tương thích. Trọng số, tokenizer/processor, adapter hoặc model merge, schema/runtime cần thiết, dependency và entrypoint phải có sẵn. Khóa model/config/prompt; không để inference tải Hugging Face hay pip.
 
-Theo Rule, BTC mount private folder tại `/data` và thu `result/submission.jsonl`. **Lệnh entrypoint, working directory, vị trí result là relative/absolute, quyền ghi, cấu trúc archive và phiên bản kit cần đối chiếu tài liệu Docker riêng của BTC trước khi chốt.** Không tự xem CLI đề xuất của đội là contract BTC.
+Theo Rule, BTC mount private folder tại `/data`, chạy inference entrypoint và lấy `result/submission.jsonl`; container phải chạy hoàn toàn offline, không có network. **Entrypoint, working directory, vị trí result là relative/absolute, quyền ghi, cấu trúc archive và phiên bản kit cần đối chiếu tài liệu Docker riêng của BTC trước khi chốt.** Không tự xem CLI đề xuất của đội là contract BTC.
 
 Checklist phát hành:
 
@@ -237,7 +243,7 @@ Checklist phát hành:
 - [ ] Có bảng đếm tham số cho mọi model và giới hạn context tại runtime.
 - [ ] Có manifest gồm commit, image tag/digest, archive size, checksum (đề xuất SHA-256 nếu form không quy định loại khác), model revisions và kit version.
 - [ ] Google Drive link đúng tệp archive bất biến, mở tải được khi không dùng tài khoản đội; P2 tải lại và kiểm checksum.
-- [ ] Đã giải quyết cách cung cấp phần “data” trong hướng dẫn: thể lệ hạn chế phân phối dữ liệu cuộc thi ra ngoài đội. Không tự ý đưa raw dataset/dữ liệu cá nhân vào gói công khai; xác nhận BTC cần loại data nào và kênh gửi được phép.
+- [ ] Bao gồm thành phần data cần thiết mà Submission Guidance yêu cầu trong Docker package. Link công khai chỉ trỏ tới đúng gói gửi BTC; loại bỏ private test, dữ liệu ngoài yêu cầu và credentials.
 - [ ] P1 và P5 cùng kiểm trước lần nộp; lưu receipt, giờ GMT+7, link, checksum và bản form.
 
 Gói có thể lớn: đo kích thước và tốc độ upload thực tế từ sớm. Thời gian tối thiểu ≈ dung lượng byte × 8 / băng thông bit/giây, rồi cộng khoảng dư cho retry, Drive processing và tải xác minh. Đến 14/11 phải có bản đã upload/kiểm tra, không đợi chiều 16/11 mới chuyển weights.

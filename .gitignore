@@ -1,0 +1,24 @@
+.DS_Store
+__MACOSX/
+
+# Restricted competition data (local only).
+/data/*
+!/data/README.md
+train+public_test.zip
+train+public_test/
+private_test/
+
+# Model weights, experiment outputs and release archives.
+/models/
+/checkpoints/
+/outputs/
+/runs/
+/artifacts/
+
+# Local environments and secrets.
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
