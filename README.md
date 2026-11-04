@@ -8,15 +8,16 @@ Workspace của đội 5 người cho bài toán nghe yêu cầu tiếng Việt 
 2. [Kế hoạch triển khai](docs/plans/implementation_plan.md): phân công, lịch từng ngày, GPU, Docker và checklist nộp bài.
 3. [Yêu cầu LifeMate](docs/competition/lifemate.md): dữ liệu, luật kỹ thuật, chấm điểm và cách nộp.
 4. [Runbook Vast.ai](docs/vast_runbook.md): đóng gói, upload dữ liệu, smoke train và chạy baseline.
-5. [Thông tin cuộc thi](docs/competition/overview.md) và [thể lệ nguồn](docs/competition/regulations/).
+5. [Runbook Colab](docs/colab_runbook.md) và [notebook train](notebooks/lifemate_colab_train.ipynb): smoke train, QLoRA và sao lưu adapter.
+6. [Thông tin cuộc thi](docs/competition/overview.md) và [thể lệ nguồn](docs/competition/regulations/).
 
-## Trạng thái ngày 04/11/2026
+## Trạng thái ngày 05/11/2026
 
 - Đã nhận và giải nén kit v3.2.0: 1.545 train, 634 public test.
 - Đã kiểm kê audio/history/catalog và chốt thiết kế baseline ASR → schema-aware agent → ToolEnv; chi tiết ở [kiểm kê dữ liệu](docs/analysis/dataset_audit.md) và [thiết kế baseline](docs/baseline_design.md).
-- Đã chuẩn bị runner offline, pipeline tạo trajectory SFT và script QLoRA; chưa tải model, chạy GPU, có checkpoint, điểm baseline hoặc kết quả huấn luyện.
+- Đã chuẩn bị runner offline, pipeline tạo trajectory SFT và script QLoRA; trên Vast.ai RTX 3090 Ti 24 GB đã tải model và chạy baseline train-dev 154 mẫu. Kết quả chẩn đoán: state match 35,1%, tool-call F1 10,6%; đây chưa phải điểm chính thức và chưa có checkpoint đã train.
 - Bộ kiểm tra schema trong kit chưa được xác nhận là scorer đầy đủ. Hình công thức Evaluation còn cần bổ sung.
-- Đội đã có Vax.ai để chạy GPU; chưa xác nhận GPU/VRAM của instance. Máy local hiện không có CUDA nên chưa thể tải model, chạy rollout hay train tại đây.
+- Notebook Colab và bundle phát triển đang được chuẩn bị; bundle chỉ chứa nhãn train và catalog cần cho SFT, không chứa môi trường đánh giá hoặc model weights.
 
 ## Cấu trúc
 

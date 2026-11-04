@@ -8,11 +8,12 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download pinned, public model revisions for offline use.")
     parser.add_argument("--config", default="configs/baseline.json")
+    parser.add_argument("--models", nargs="+", choices=("asr", "llm"), default=("asr", "llm"))
     args = parser.parse_args()
     from huggingface_hub import snapshot_download
 
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
-    for key in ("asr", "llm"):
+    for key in args.models:
         model = config["models"][key]
         destination = Path(model["local_path"])
         destination.mkdir(parents=True, exist_ok=True)
