@@ -124,7 +124,7 @@ def load_quantized_model(model_path: str, compute_dtype):
         bnb_4bit_compute_dtype=compute_dtype,
     )
     base = AutoModelForCausalLM.from_pretrained(
-        model_path, quantization_config=quantization, torch_dtype=compute_dtype,
+        model_path, quantization_config=quantization, dtype=compute_dtype,
         device_map="auto", local_files_only=True,
     )
     base = prepare_model_for_kbit_training(base, use_gradient_checkpointing=True)

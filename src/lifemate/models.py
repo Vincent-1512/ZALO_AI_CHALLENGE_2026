@@ -22,9 +22,8 @@ class SpeechRecognizer:
         self.processor = AutoProcessor.from_pretrained(path, local_files_only=True)
         dtype = _torch_dtype(torch, self.device == "cuda")
         self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            path, torch_dtype=dtype, low_cpu_mem_usage=True, local_files_only=True
+            path, dtype=dtype, low_cpu_mem_usage=True, local_files_only=True
         ).to(self.device).eval()
-        self.forced_decoder_ids = self.processor.get_decoder_prompt_ids(language="vi", task="transcribe")
         self.batch_size = batch_size
         self.sample_rate = sample_rate
 
@@ -50,13 +49,20 @@ class SpeechRecognizer:
         for start in range(0, len(audios), self.batch_size):
             batch = audios[start : start + self.batch_size]
             inputs = self.processor(
-                batch, sampling_rate=self.sample_rate, padding="longest", return_tensors="pt"
+                batch, sampling_rate=self.sample_rate, padding="longest",
+                return_attention_mask=True, return_tensors="pt",
             )
             features = inputs.input_features.to(self.device, dtype=self.model.dtype)
+            attention_mask = inputs.get("attention_mask")
+            if attention_mask is None:
+                raise RuntimeError("Whisper processor did not return an attention mask")
+            attention_mask = attention_mask.to(self.device)
             with self.torch.inference_mode():
                 generated = self.model.generate(
                     features,
-                    forced_decoder_ids=self.forced_decoder_ids,
+                    attention_mask=attention_mask,
+                    language="vi",
+                    task="transcribe",
                     do_sample=False,
                     num_beams=1,
                     max_new_tokens=max_new_tokens,
@@ -98,7 +104,7 @@ def _load_causal_model(path: str, device: str, dtype):
 
     return AutoModelForCausalLM.from_pretrained(
         path,
-        torch_dtype=dtype,
+        dtype=dtype,
         low_cpu_mem_usage=True,
         local_files_only=True,
         device_map="auto" if device == "cuda" else None,
