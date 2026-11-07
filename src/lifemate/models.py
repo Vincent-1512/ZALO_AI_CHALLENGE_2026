@@ -22,7 +22,7 @@ class SpeechRecognizer:
         self.processor = AutoProcessor.from_pretrained(path, local_files_only=True)
         dtype = _torch_dtype(torch, self.device == "cuda")
         self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            path, dtype=dtype, low_cpu_mem_usage=True, local_files_only=True
+            path, torch_dtype=dtype, low_cpu_mem_usage=True, local_files_only=True
         ).to(self.device).eval()
         self.batch_size = batch_size
         self.sample_rate = sample_rate
@@ -104,7 +104,7 @@ def _load_causal_model(path: str, device: str, dtype):
 
     return AutoModelForCausalLM.from_pretrained(
         path,
-        dtype=dtype,
+        torch_dtype=dtype,
         low_cpu_mem_usage=True,
         local_files_only=True,
         device_map="auto" if device == "cuda" else None,
