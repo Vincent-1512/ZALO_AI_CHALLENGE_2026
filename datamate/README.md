@@ -64,7 +64,7 @@ Do not let the dependency cell replace the CUDA PyTorch build. If the Vast image
 
 ## Notebook actions
 
-The default `ACTION="run_all"` runs the complete pipeline through public JSONL in one pass. It writes a 100-plan audit sample and continues without waiting for manual review; inspect that audit after the run. Keep Vast running until the final submission path is printed. For separate or recovery runs, edit the first configuration cell and choose one action:
+The default `ACTION="run_all"` runs the pipeline through public JSONL in one pass with a fast configuration (16 dev examples, 16 plan-pilot examples, up to 640 labeled train examples and 2 epochs). Set `PLAN_LABEL_LIMIT=0` to use the full train split after the fast run is stable. It writes a 100-plan audit sample and continues without waiting for manual review; inspect that audit after the run. Keep Vast running until the final submission path is printed. For separate or recovery runs, edit the first configuration cell and choose one action:
 
 | Action | Purpose |
 |---|---|

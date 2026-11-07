@@ -3,19 +3,34 @@
   "model_name": "Qwen/Qwen3-4B-Instruct-2507",
   "model_revision": "b79a0e62a051eebdd801742a4a70bbaac6b38747",
   "max_context_tokens": 8192,
-  "max_new_tokens": 384,
-  "max_sequence_length": 8192,
+  "max_new_tokens": 256,
+  "max_sequence_length": 6144,
   "max_catalog_chars": 22000,
-  "dev_business_ids": ["biz_101", "biz_103", "biz_111", "biz_115", "biz_123", "biz_126"],
+  "dev_business_ids": [
+    "biz_101",
+    "biz_103",
+    "biz_111",
+    "biz_115",
+    "biz_123",
+    "biz_126"
+  ],
   "lora": {
     "rank": 16,
     "alpha": 32,
     "dropout": 0.05,
-    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    "target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj",
+      "gate_proj",
+      "up_proj",
+      "down_proj"
+    ]
   },
   "training": {
     "learning_rate": 0.0001,
-    "epochs": 5,
+    "epochs": 2,
     "micro_batch_size": 1,
     "gradient_accumulation_steps": 16,
     "warmup_ratio": 0.05,
