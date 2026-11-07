@@ -1,0 +1,15 @@
+# Competition datasets and derived copies: keep local, never commit.
+/data/archives/*
+!/data/archives/.gitkeep
+/data/raw/*
+!/data/raw/.gitkeep
+/data/processed/*
+!/data/processed/.gitkeep
+
+# Model weights and run artifacts can be large or contain competition data.
+/models/*
+!/models/.gitkeep
+/outputs/*
+!/outputs/.gitkeep
+/result/*
+!/result/.gitkeep
