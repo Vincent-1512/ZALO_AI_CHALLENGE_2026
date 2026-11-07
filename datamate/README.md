@@ -38,17 +38,11 @@ data/raw/public_test/
 
 The notebook first reuses extracted data already on the Vast volume, then searches the project and common `/workspace` locations for BTC ZIP archives and extracts them when required. On a fresh volume, put `train.zip` and `public_test.zip` in `data/archives/` once; the notebook handles extraction and the rest of setup. It never downloads competition data from GitHub or labels/augments public/private questions. Keep raw data and generated run artifacts out of commits and public links.
 
-## Run the notebook from GitHub on Vast
+## Run one notebook on a fresh Vast instance
 
-For a source checkout, clone the public repository and open the notebook:
+Download `datamate/notebooks/datamate_vast_train.ipynb` from GitHub, upload just that notebook to Vast, open it, and click **Run All**. Its first code cell downloads the pinned `datamate-fast-v1-20261107` GitHub Release bundle, verifies its SHA256, and extracts source plus train/public archives. Later cells install the Python packages and download the base model if it is not cached.
 
-```bash
-cd /workspace/datamate_job
-git clone https://github.com/Vincent-1512/ZALO_AI_CHALLENGE_2026.git
-cd ZALO_AI_CHALLENGE_2026/datamate
-```
-
-The notebook reuses DataMate raw data, archives and Hugging Face model cache from the previous `/workspace/datamate_job/datamate/` workspace when present. On a completely fresh volume, upload the BTC `train.zip` and `public_test.zip` once into `data/archives/`; the notebook extracts them and downloads the model/dependencies automatically. Dataset archives are intentionally not hosted in GitHub, and the notebook cannot authenticate to the BTC portal for you.
+The standalone notebook still needs internet access for the first bundle/model download. The public release contains the competition archives under the organizer's permission as reported by the team; do not reuse or redistribute it beyond that permission. If an old Vast volume already has the dataset or model cache, the notebook searches for and reuses it.
 
 ## Build a Vast upload bundle
 
@@ -59,6 +53,8 @@ python3 datamate/scripts/build_vast_bundle.py
 ```
 
 The script writes a compressed bundle and `.sha256` file under `datamate/outputs/handoff/`. It includes the notebook, source, docs, pinned training dependencies and the two dataset archives; it excludes extracted copies, checkpoints and outputs. Upload the `.tar.gz` to a persistent Vast volume, verify its checksum, then extract it so the folder is `/workspace/datamate_job/datamate/`. Open `datamate/notebooks/datamate_vast_train.ipynb` from that project folder.
+
+The local handoff folder keeps only the newest generated bundle. Older bundles are reproducible with the build command above and are removed during cleanup.
 
 Do not let the dependency cell replace the CUDA PyTorch build. If the Vast image has no CUDA-enabled PyTorch, select a PyTorch image or install the matching CUDA wheel using the [official PyTorch selector](https://pytorch.org/get-started/locally/), then restart the notebook kernel.
 
