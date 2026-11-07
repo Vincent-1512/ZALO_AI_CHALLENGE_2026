@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import unicodedata
+from collections import Counter
 from typing import Any
 
 
@@ -11,7 +15,37 @@ def _catalog_index(catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {tool["name"]: tool for app in catalog.get("apps", []) for tool in app.get("tools", [])}
 
 
-def available_tool_specs(sample: dict[str, Any], catalog: dict[str, Any]) -> list[dict[str, Any]]:
+_QUERY_STOPWORDS = {
+    "cho", "giup", "giúp", "minh", "mình", "toi", "tôi", "ban", "bạn",
+    "hay", "hãy", "voi", "với", "duoc", "được", "nhe", "nhé", "la", "là",
+    "cua", "của", "mot", "một", "cac", "các", "nhung", "những", "nay", "này",
+    "do", "đó", "theo", "va", "và", "thi", "thì", "co", "có", "khong", "không",
+}
+
+
+def _search_terms(value: Any) -> set[str]:
+    text = unicodedata.normalize("NFC", str(value)).lower().replace("_", " ").replace(".", " ")
+    return {
+        term for term in re.findall(r"[^\W_]+", text, flags=re.UNICODE)
+        if len(term) > 1 and term not in _QUERY_STOPWORDS
+    }
+
+
+def _tool_search_text(tool: dict[str, Any], app_names: dict[str, str]) -> str:
+    parameters = tool.get("parameters", {})
+    pieces = [
+        tool.get("name", ""), tool.get("description", ""), tool.get("kind", ""),
+        tool.get("returns", ""), app_names.get(tool.get("app", ""), ""),
+    ]
+    for name, spec in parameters.get("properties", {}).items():
+        pieces.extend((name, spec.get("description", "")))
+        pieces.extend(spec.get("enum", []))
+    return " ".join(map(str, pieces))
+
+
+def available_tool_specs(
+    sample: dict[str, Any], catalog: dict[str, Any], request_text: str = ""
+) -> list[dict[str, Any]]:
     index = _catalog_index(catalog)
     names = {
         name
@@ -19,18 +53,41 @@ def available_tool_specs(sample: dict[str, Any], catalog: dict[str, Any]) -> lis
         for name in app.get("tools", [])
     }
     names.add("sys.ask_missing_info")
-    specs = []
+    app_names = {
+        app.get("id", ""): f"{app.get('name_vi', '')} {app.get('description', '')}"
+        for app in catalog.get("apps", [])
+    }
+    query_terms = _search_terms(request_text)
+    candidate_terms = {
+        name: _search_terms(_tool_search_text(index[name], app_names))
+        for name in names if name in index
+    }
+    document_frequency = Counter(
+        term for terms in candidate_terms.values() for term in terms
+    )
+    ranked = []
     for name in sorted(names):
         tool = index.get(name)
         if tool is None:
-            specs.append({"name": name})
+            ranked.append((0.0, name, {"name": name}))
             continue
-        specs.append({
+        terms = candidate_terms[name]
+        # Prefer query words that distinguish a tool from the other installed tools.
+        score = sum(1.0 / (1 + document_frequency[term]) for term in query_terms & terms)
+        spec = {
             "name": name,
             "description": tool.get("description", ""),
             "kind": tool.get("kind", ""),
             "parameters": tool.get("parameters", {}),
-        })
+        }
+        ranked.append((score, name, spec))
+    # Keep every installed tool to protect recall; optionally compare relevance order
+    # against the original alphabetical order using the same model and dev split.
+    if os.environ.get("LIFEMATE_TOOL_RETRIEVAL", "off").lower() in {"0", "off", "false"}:
+        ranked.sort(key=lambda row: row[1])
+    else:
+        ranked.sort(key=lambda row: (-row[0], row[1]))
+    specs = [row[2] for row in ranked]
     return specs
 
 
@@ -71,7 +128,7 @@ def build_messages(
             for key in ("current_time", "timezone", "location", "user_profile")
             if key in context
         },
-        "available_tools": available_tool_specs(sample, catalog),
+        "available_tools": available_tool_specs(sample, catalog, transcript),
         "history": normalized_history(sample.get("history", []), transcripts),
         "steps_this_request": [
             {"call": call, "result": result}
