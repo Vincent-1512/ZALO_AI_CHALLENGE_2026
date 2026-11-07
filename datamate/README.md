@@ -36,7 +36,7 @@ data/raw/train/
 data/raw/public_test/
 ```
 
-The notebook extracts an archive only when required split files are missing. It never labels or augments public/private questions. Keep raw data and generated run artifacts out of commits and public links.
+The notebook first reuses extracted data already on the Vast volume, then searches the project and common `/workspace` locations for BTC ZIP archives and extracts them when required. On a fresh volume, put `train.zip` and `public_test.zip` in `data/archives/` once; the notebook handles extraction and the rest of setup. It never downloads competition data from GitHub or labels/augments public/private questions. Keep raw data and generated run artifacts out of commits and public links.
 
 ## Build a Vast upload bundle
 
