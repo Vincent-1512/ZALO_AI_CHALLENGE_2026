@@ -38,6 +38,18 @@ data/raw/public_test/
 
 The notebook first reuses extracted data already on the Vast volume, then searches the project and common `/workspace` locations for BTC ZIP archives and extracts them when required. On a fresh volume, put `train.zip` and `public_test.zip` in `data/archives/` once; the notebook handles extraction and the rest of setup. It never downloads competition data from GitHub or labels/augments public/private questions. Keep raw data and generated run artifacts out of commits and public links.
 
+## Run the notebook from GitHub on Vast
+
+For a source checkout, clone the public repository and open the notebook:
+
+```bash
+cd /workspace/datamate_job
+git clone https://github.com/Vincent-1512/ZALO_AI_CHALLENGE_2026.git
+cd ZALO_AI_CHALLENGE_2026/datamate
+```
+
+The notebook reuses DataMate raw data, archives and Hugging Face model cache from the previous `/workspace/datamate_job/datamate/` workspace when present. On a completely fresh volume, upload the BTC `train.zip` and `public_test.zip` once into `data/archives/`; the notebook extracts them and downloads the model/dependencies automatically. Dataset archives are intentionally not hosted in GitHub, and the notebook cannot authenticate to the BTC portal for you.
+
 ## Build a Vast upload bundle
 
 From the repository root on the local machine:
