@@ -90,12 +90,19 @@ def parse_action(output: str) -> dict[str, Any] | None:
         return None
     if value.get("action") == "stop":
         return {"action": "stop"}
-    if value.get("action") == "call":
-        name, arguments = value.get("name"), value.get("arguments")
-        if isinstance(name, str) and isinstance(arguments, dict):
-            return {"action": "call", "name": name, "arguments": arguments}
-    if isinstance(value.get("name"), str) and isinstance(value.get("arguments"), dict):
-        return {"action": "call", "name": value["name"], "arguments": value["arguments"]}
+    name = value.get("name")
+    arguments = value.get("arguments", {})
+    if arguments is None:
+        arguments = {}
+    elif isinstance(arguments, str) and arguments.strip().startswith("{"):
+        try:
+            parsed_args = json.loads(arguments.strip())
+            if isinstance(parsed_args, dict):
+                arguments = parsed_args
+        except json.JSONDecodeError:
+            pass
+    if value.get("action") in ("call", None) and isinstance(name, str) and isinstance(arguments, dict):
+        return {"action": "call", "name": name, "arguments": arguments}
     return None
 
 

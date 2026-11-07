@@ -14,6 +14,11 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from lifemate.data import import_tool_env, load_catalog, read_jsonl, resolve_split
 from lifemate.models import SpeechRecognizer, ToolAgent
+from lifemate.prism_analyst import (
+    build_case_diagnostic,
+    cluster_failures_for_prism,
+    compute_cross_generation_matrix,
+)
 from lifemate.runner import infer_one, set_deterministic_seed
 
 
@@ -79,6 +84,17 @@ def parse_args():
     parser.add_argument("--adapter")
     parser.add_argument("--limit-samples", type=int, default=0)
     parser.add_argument("--report", default="reports/runs/dev_metrics.json")
+    parser.add_argument(
+        "--prev-report",
+        action="append",
+        default=[],
+        help="Optional previous dev report JSON(s) to compute PRISM cross-generation failure matrix.",
+    )
+    parser.add_argument(
+        "--disable-middleware",
+        action="store_true",
+        help="Run in PRISM-PO (Prompt-Only) mode by disabling Tool-Boundary Middleware.",
+    )
     return parser.parse_args()
 
 
@@ -115,20 +131,28 @@ def load_agent(config: dict, args):
 
 
 def evaluate_sample(sample, runtime):
-    tool_env, split, catalog, index, state_hash, asr, agent, max_steps = runtime
+    tool_env, split, catalog, index, state_hash, asr, agent, max_steps, enable_middleware = runtime
     profile = {}
     calls, _, env = infer_one(
         sample, tool_env, split, catalog, asr, agent, max_steps,
         return_env_for_train_eval=True, profile=profile,
+        enable_middleware=enable_middleware,
     )
     expected = sample["label"]["tool_calls"]
+    predicted_state = env.get_state()
+    state_match = changed_apps_match(predicted_state, sample["label"]["final_state"], state_hash)
+    matched_calls = maximum_matching(calls, expected, index)
+    diagnostic = build_case_diagnostic(
+        sample, calls, predicted_state, state_match, matched_calls, profile, max_steps, state_hash
+    )
     return {
-        "state_match": changed_apps_match(env.get_state(), sample["label"]["final_state"], state_hash),
-        "matched_calls": maximum_matching(calls, expected, index),
+        "state_match": state_match,
+        "matched_calls": matched_calls,
         "predicted_calls": len(calls),
         "gold_calls": len(expected),
         "oos_exact": not calls if not expected else None,
         "profile": profile,
+        "diagnostic": diagnostic,
     }
 
 
@@ -149,7 +173,7 @@ def latency_summary(profiles: list[dict]) -> dict:
     return latency
 
 
-def build_report(results: list[dict]) -> dict:
+def build_report(results: list[dict], prev_reports: list[dict] | None = None) -> dict:
     samples = len(results)
     matches = sum(row["matched_calls"] for row in results)
     predictions = sum(row["predicted_calls"] for row in results)
@@ -158,7 +182,8 @@ def build_report(results: list[dict]) -> dict:
     recall = matches / gold if gold else 0.0
     oos = [row["oos_exact"] for row in results if row["oos_exact"] is not None]
     profiles = [row["profile"] for row in results]
-    return {
+    cases = [row["diagnostic"] for row in results if "diagnostic" in row]
+    report = {
         "split": "train-dev",
         "samples": samples,
         "changed_app_state_match_rate": sum(row["state_match"] for row in results) / samples,
@@ -171,8 +196,13 @@ def build_report(results: list[dict]) -> dict:
         "oos_samples": len(oos),
         "oos_exact_rate": sum(oos) / len(oos) if oos else None,
         "latency_seconds": latency_summary(profiles),
+        "prism_analyst_clusters": cluster_failures_for_prism(cases),
+        "cases": cases,
         "note": "Call F1 is a local diagnostic; the full official combined-score formula is not available in text form.",
     }
+    if prev_reports:
+        report["cross_generation_matrix"] = compute_cross_generation_matrix(cases, prev_reports)
+    return report
 
 
 def main() -> None:
@@ -188,7 +218,22 @@ def main() -> None:
         rows = rows[: args.limit_samples]
         print(f"Evaluating first {len(rows)} dev samples", flush=True)
     asr, agent = load_agent(config, args)
-    runtime = (tool_env, split, catalog, index, state_hash, asr, agent, config["limits"]["max_tool_steps"])
+    enable_middleware = (
+        False
+        if args.disable_middleware
+        else config.get("harness", {}).get("enable_middleware", True)
+    )
+    runtime = (
+        tool_env,
+        split,
+        catalog,
+        index,
+        state_hash,
+        asr,
+        agent,
+        config["limits"]["max_tool_steps"],
+        enable_middleware,
+    )
     results = []
     started = time.perf_counter()
     for sample_index, row in enumerate(rows, start=1):
@@ -196,11 +241,17 @@ def main() -> None:
         if sample_index % 10 == 0 or sample_index == len(rows):
             elapsed = time.perf_counter() - started
             print(f"evaluated={sample_index}/{len(rows)} elapsed_seconds={elapsed:.1f}", flush=True)
-    report = build_report(results)
+    prev_reports = [
+        json.loads(Path(p).read_text(encoding="utf-8"))
+        for p in args.prev_report
+        if Path(p).is_file()
+    ]
+    report = build_report(results, prev_reports=prev_reports)
     path = Path(args.report)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    summary_view = {k: v for k, v in report.items() if k != "cases"}
+    print(json.dumps(summary_view, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

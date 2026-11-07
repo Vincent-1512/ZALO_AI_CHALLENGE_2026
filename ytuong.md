@@ -1,0 +1,1 @@
+cần trong đoạn hội thoại filetring gropp tool hay chủ đề  -> tìm kiếm nhanh các tool group phù hợp , tool có hay dạng read tool và write tool 

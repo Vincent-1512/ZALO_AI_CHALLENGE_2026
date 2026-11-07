@@ -19,6 +19,7 @@ private_test/
 
 # Local environments and secrets.
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 .env

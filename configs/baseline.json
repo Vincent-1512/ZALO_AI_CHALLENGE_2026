@@ -7,10 +7,10 @@
       "local_path": "models/PhoWhisper-medium"
     },
     "llm": {
-      "repo_id": "Qwen/Qwen3-4B-Instruct-2507",
-      "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
-      "parameters": 4022468096,
-      "local_path": "models/Qwen3-4B-Instruct-2507"
+      "repo_id": "Qwen/Qwen2.5-3B-Instruct",
+      "revision": "main",
+      "parameters": 3086252032,
+      "local_path": "models/Qwen2.5-3B-Instruct"
     },
     "adapter_path": null
   },
@@ -28,6 +28,12 @@
     "do_sample": false,
     "num_beams": 1,
     "temperature": 0.0
+  },
+  "harness": {
+    "mode": "prism_mw",
+    "enable_middleware": true,
+    "max_p1_added_sentences": 2,
+    "max_replan_budget": 3
   },
   "training": {
     "seed": 2026,

@@ -1,0 +1,14 @@
+# QUY TẮC KHÔI PHỤC PHÁT NGÔN KHUYẾT NGỮ CẢNH (DUR - INCOMPLETE UTTERANCE RESTORATION) CHO LIFEMATE
+
+NHIỆM VỤ:
+Phân tích câu nói hiện tại (request) của người dùng từ giọng nói tiếng Việt (ASR transcript), đối chiếu với lịch sử hội thoại đa lượt (history) và kết quả công cụ (tool_results), để khôi phục các thành phần bị lược bỏ (ellipsis) hoặc đại từ chỉ định (anaphora / coreference).
+
+CÁC MẪU ĐẠI TỪ & THAM CHIẾU CẦN KHÔI PHỤC TRONG LIFEMATE:
+1. Đại từ chỉ định thực thể ("cái đó", "đơn đấy", "lịch vừa nãy", "báo thức đó", "món này", "vé kia"):
+   - Ánh xạ ngược về bản ghi thực thể gần nhất trong `history[].tool_results` hoặc `history[].tool_calls` để lấy đúng `id` / `*_id` và tên thực thể.
+2. Đại từ nhân xưng ("anh ấy", "chị đó", "bạn ấy", "số đó"):
+   - Ánh xạ ngược về thực thể người liên hệ (`contact_id`, `phone`, `email`, `recipient`) được nhắc tới ở lượt gần nhất.
+3. Phát ngôn sửa đổi khuyết động từ/tân ngữ ("Đổi sang 9 giờ rưỡi nhé", "Sửa lại thành 2 cái", "Thôi hủy đi"):
+   - Nhận diện quan hệ `SUPERSEDES`: Giữ nguyên đối tượng thực thể của lượt trước nhưng cập nhật giá trị tham số mới hoặc chuyển sang công cụ `update` / `delete` / `cancel`.
+4. Câu xác nhận hoặc phủ định ("Không cần nữa đâu", "Đừng xóa nhé", "Cảm ơn bạn"):
+   - Nếu là câu cảm ơn xã giao hoặc yêu cầu ngừng hành động chưa thực thi, không sinh lệnh gọi tool mới mà trả về `{"action": "stop"}`.

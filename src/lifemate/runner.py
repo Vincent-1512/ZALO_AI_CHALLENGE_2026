@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .data import import_tool_env, load_catalog, read_jsonl, resolve_audio_path, resolve_split
+from .middleware import check_local_invariants, evaluate_4_criteria_verifier, silent_correct_action
 from .models import SpeechRecognizer, ToolAgent
 from .prompts import build_messages
 
@@ -73,32 +74,113 @@ def _validate_action(env, action, profile):
     return validation
 
 
-def _action_for_step(agent, env, sample, transcript, catalog, transcripts, results, profile):
-    started = time.perf_counter()
-    action = _next_action(agent, env, sample, transcript, catalog, transcripts, results)
-    if profile is not None:
-        profile["policy_seconds"] += time.perf_counter() - started
+def _intercept_and_validate(
+    env,
+    raw_action: dict[str, Any] | None,
+    sample: dict[str, Any],
+    catalog: dict[str, Any],
+    transcript: str,
+    transcripts: dict[str, str] | None,
+    results: list[Any],
+    profile: dict[str, float] | None,
+    enable_middleware: bool = True,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    action = (
+        silent_correct_action(raw_action, sample, catalog, prior_results=results)
+        if enable_middleware
+        else raw_action
+    )
     if not _valid_action(action):
-        return None
+        return None, None
+    if enable_middleware:
+        invariant_error = check_local_invariants(
+            action,
+            sample,
+            catalog,
+            transcript,
+            transcripts,
+            env.get_tool_calls(),
+            results,
+        )
+        if invariant_error is not None:
+            return action, {"rejected_call": action, "middleware_error": invariant_error}
     validation = _validate_action(env, action, profile)
     if validation.get("ok"):
-        return action
-    feedback = json.dumps({"rejected_call": action, "schema_error": validation.get("error")}, ensure_ascii=False)
+        return action, None
+    return action, {"rejected_call": action, "schema_error": validation.get("error")}
+
+
+def _action_for_step(
+    agent,
+    env,
+    sample,
+    transcript,
+    catalog,
+    transcripts,
+    results,
+    profile,
+    enable_middleware: bool = True,
+    replan_state: dict[str, int] | None = None,
+):
     started = time.perf_counter()
-    corrected = _next_action(
+    raw_action = _next_action(agent, env, sample, transcript, catalog, transcripts, results)
+    if profile is not None:
+        profile["policy_seconds"] += time.perf_counter() - started
+    action, error_payload = _intercept_and_validate(
+        env, raw_action, sample, catalog, transcript, transcripts, results, profile, enable_middleware
+    )
+    if action is None:
+        return None
+    if error_payload is None:
+        return action
+    if replan_state is not None:
+        replan_state["used"] += 1
+        if replan_state["used"] > replan_state["budget"]:
+            return None
+        error_payload = {
+            "replanned": True,
+            "replan_budget_used": f"{replan_state['used']}/{replan_state['budget']}",
+            **error_payload,
+        }
+    feedback = json.dumps(error_payload, ensure_ascii=False)
+    started = time.perf_counter()
+    retry_raw = _next_action(
         agent, env, sample, transcript, catalog, transcripts, results, feedback=feedback
     )
     if profile is not None:
         profile["policy_seconds"] += time.perf_counter() - started
-    if not _valid_action(corrected):
-        return None
-    return corrected if _validate_action(env, corrected, profile).get("ok") else None
+    corrected, retry_error = _intercept_and_validate(
+        env, retry_raw, sample, catalog, transcript, transcripts, results, profile, enable_middleware
+    )
+    return corrected if (corrected is not None and retry_error is None) else None
 
 
-def _run_actions(env, sample, transcript, catalog, transcripts, prior_results, agent, max_steps, profile):
+def _run_actions(
+    env,
+    sample,
+    transcript,
+    catalog,
+    transcripts,
+    prior_results,
+    agent,
+    max_steps,
+    profile,
+    enable_middleware: bool = True,
+    max_replan_budget: int = 3,
+):
+    replan_state = {"used": 0, "budget": max_replan_budget}
     for _ in range(max_steps):
         action = _action_for_step(
-            agent, env, sample, transcript, catalog, transcripts, prior_results, profile
+            agent,
+            env,
+            sample,
+            transcript,
+            catalog,
+            transcripts,
+            prior_results,
+            profile,
+            enable_middleware=enable_middleware,
+            replan_state=replan_state,
         )
         if action is None:
             return
@@ -107,6 +189,12 @@ def _run_actions(env, sample, transcript, catalog, transcripts, prior_results, a
         if profile is not None:
             profile["tool_seconds"] += time.perf_counter() - started
         prior_results.append(result)
+        if enable_middleware:
+            verdict = evaluate_4_criteria_verifier(action, result, catalog)
+            if not verdict["passed"]:
+                replan_state["used"] += 1
+                if replan_state["used"] > replan_state["budget"]:
+                    return
 
 
 def infer_one(
@@ -119,6 +207,7 @@ def infer_one(
     max_tool_steps,
     return_env_for_train_eval=False,
     profile=None,
+    enable_middleware: bool = True,
 ):
     started = time.perf_counter()
     env = tool_env(split_paths.split_name, sample["id"], root=split_paths.env_root)
@@ -130,7 +219,16 @@ def infer_one(
         if profile is not None:
             profile["asr_seconds"] = time.perf_counter() - phase_started
         _run_actions(
-            env, sample, transcript, catalog, transcripts, [], agent, max_tool_steps, profile
+            env,
+            sample,
+            transcript,
+            catalog,
+            transcripts,
+            [],
+            agent,
+            max_tool_steps,
+            profile,
+            enable_middleware=enable_middleware,
         )
     except Exception as error:
         print(f"sample={sample['id']} error={type(error).__name__}: {error}", file=sys.stderr)
@@ -164,6 +262,7 @@ def _write_predictions(input_path, output_path, paths, tool_env, catalog, asr, a
     expected = sum(1 for _ in read_jsonl(input_path))
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
+    enable_middleware = config.get("harness", {}).get("enable_middleware", True)
     with output.open("w", encoding="utf-8") as stream:
         for sample in read_jsonl(input_path):
             if sample["id"] in seen:
@@ -173,6 +272,7 @@ def _write_predictions(input_path, output_path, paths, tool_env, catalog, asr, a
             calls, state_hash = infer_one(
                 sample, tool_env, paths, catalog, asr, agent,
                 config["limits"]["max_tool_steps"],
+                enable_middleware=enable_middleware,
             )
             record = {"id": sample["id"], "tool_calls": calls, "state_hash": state_hash}
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")

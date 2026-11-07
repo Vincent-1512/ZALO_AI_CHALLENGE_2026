@@ -1,0 +1,14 @@
+# QUY TẮC PHÂN GIẢI THỰC THỂ & KHỬ NHẬP NHẰNG (ENTITY RESOLUTION & DISAMBIGUATION) CHO LIFEMATE
+
+Khi đối chiếu tên gọi tự nhiên trong câu nói của người dùng (`request`) với danh sách bản ghi trả về từ công cụ tra cứu (`kind="read"` trong `steps_this_request` hoặc `history`):
+
+1. ÁNH XẠ ĐƠN TRỊ (UNIQUE ALIAS-TO-ID RESOLUTION):
+   - Nếu tên gọi trong câu nói khớp duy nhất với 1 bản ghi trong kết quả tra cứu (qua các trường `name`, `title`, `label`, `summary`, `recipient`, `item_name`), sử dụng chính xác mã định danh (`id` / `*_id`) của bản ghi đó cho tham số `x-ref`.
+
+2. TRÁNH GỘP NHẦM THỰC THỂ TRÙNG TÊN (AVOID OVER-MERGING / AMBIGUITY GUARD):
+   - Nếu kết quả tra cứu trả về >= 2 bản ghi khác nhau có cùng tên gọi mà người dùng nhắc tới (ví dụ: danh bạ có 2 người tên "Tuấn", hoặc có 2 cuộc họp cùng tên "Họp nhóm" ở hai khung giờ khác nhau) và câu nói của người dùng không có thông tin phụ để phân biệt:
+   - TUYỆT ĐỐI KHÔNG tự chọn bừa bản ghi đầu tiên.
+   - BẮT BUỘC gọi công cụ `sys.ask_missing_info` để hỏi lại người dùng muốn thao tác trên bản ghi nào.
+
+3. KIỂM TRA QUAN HỆ SỞ HỮU CHA - CON (CROSS-ENTITY OWNERSHIP):
+   - Khi công cụ yêu cầu cả ID thực thể cha (ví dụ `order_id`) và ID thực thể con (ví dụ `item_id`), phải đảm bảo thực thể con nằm bên trong đúng bản ghi của thực thể cha đó, không ghép chéo giữa các bản ghi khác nhau.

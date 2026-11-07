@@ -19,9 +19,19 @@ def trim_history(messages: list[dict], tokenizer, max_length: int):
         prompt_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
         if len(prompt_ids) <= max_length:
             return prompt_ids
-        if not payload["history"]:
-            raise ValueError(f"Prompt alone exceeds max sequence length ({len(prompt_ids)} > {max_length})")
-        payload["history"].pop(0)
+        if payload["history"]:
+            payload["history"].pop(0)
+            continue
+        tools = payload.get("available_tools", [])
+        pruned = False
+        for idx in range(len(tools) - 1, -1, -1):
+            if tools[idx].get("name") != "sys.ask_missing_info" and idx >= 4:
+                tools.pop(idx)
+                pruned = True
+                break
+        if pruned:
+            continue
+        raise ValueError(f"Prompt alone exceeds max sequence length ({len(prompt_ids)} > {max_length})")
 
 
 def encode_record(record: dict, tokenizer, max_length: int) -> dict:
@@ -68,13 +78,19 @@ def parse_args():
     parser = argparse.ArgumentParser(description="QLoRA fine-tune the LifeMate Qwen next-action policy.")
     parser.add_argument("--train-jsonl", default="data/processed/sft/train.jsonl")
     parser.add_argument("--dev-jsonl", default="data/processed/sft/dev.jsonl")
-    parser.add_argument("--model-path", default="models/Qwen3-4B-Instruct-2507")
-    parser.add_argument("--output-dir", default="models/lifemate-qwen3-4b-lora")
+    parser.add_argument("--model-path", default="models/Qwen2.5-3B-Instruct")
+    parser.add_argument("--output-dir", default="models/lifemate-qwen2.5-3b-lora")
     parser.add_argument("--seed", type=int, default=2026)
-    parser.add_argument("--epochs", type=float, default=2)
+    parser.add_argument("--epochs", type=float, default=3)
+    parser.add_argument("--batch-size", type=int, default=1, help="Per-device train batch size (set 4 or 8 on A100)")
+    parser.add_argument("--eval-batch-size", type=int, default=1)
+    parser.add_argument("--lora-r", type=int, default=32, help="LoRA rank dimension")
+    parser.add_argument("--lora-alpha", type=int, default=64, help="LoRA alpha scaling factor")
+    parser.add_argument("--lora-dropout", type=float, default=0.05, help="LoRA dropout rate")
     parser.add_argument("--max-sequence-length", type=int, default=8192)
-    parser.add_argument("--learning-rate", type=float, default=1e-4)
+    parser.add_argument("--learning-rate", type=float, default=2e-4)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=16)
+    parser.add_argument("--use-flash-attention-2", action="store_true", default=False)
     parser.add_argument("--limit-train-samples", type=int, default=0)
     parser.add_argument("--limit-dev-samples", type=int, default=0)
     return parser.parse_args()
@@ -112,7 +128,14 @@ def load_encoded_data(args, tokenizer):
     return train_data, dev_data
 
 
-def load_quantized_model(model_path: str, compute_dtype):
+def load_quantized_model(
+    model_path: str,
+    compute_dtype,
+    lora_r: int = 32,
+    lora_alpha: int = 64,
+    lora_dropout: float = 0.05,
+    use_flash_attention: bool = False,
+):
     import torch
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     from transformers import AutoModelForCausalLM, BitsAndBytesConfig
@@ -123,14 +146,26 @@ def load_quantized_model(model_path: str, compute_dtype):
         bnb_4bit_use_double_quant=True,
         bnb_4bit_compute_dtype=compute_dtype,
     )
+    extra_kwargs = {}
+    if use_flash_attention:
+        extra_kwargs["attn_implementation"] = "flash_attention_2"
+
     base = AutoModelForCausalLM.from_pretrained(
-        model_path, quantization_config=quantization, dtype=compute_dtype,
-        device_map="auto", local_files_only=True,
+        model_path,
+        quantization_config=quantization,
+        dtype=compute_dtype,
+        device_map="auto",
+        local_files_only=True,
+        **extra_kwargs,
     )
     base = prepare_model_for_kbit_training(base, use_gradient_checkpointing=True)
     base.config.use_cache = False
     adapter_config = LoraConfig(
-        r=16, lora_alpha=32, lora_dropout=0.05, bias="none", task_type="CAUSAL_LM",
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        bias="none",
+        task_type="CAUSAL_LM",
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
     model = get_peft_model(base, adapter_config)
@@ -144,8 +179,8 @@ def make_training_args(args, compute_dtype, torch):
     return TrainingArguments(
         output_dir=args.output_dir,
         num_train_epochs=args.epochs,
-        per_device_train_batch_size=1,
-        per_device_eval_batch_size=1,
+        per_device_train_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         lr_scheduler_type="cosine",
@@ -154,6 +189,9 @@ def make_training_args(args, compute_dtype, torch):
         eval_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=3,
+        load_best_model_at_end=True,
+        metric_for_best_model="loss",
+        greater_is_better=False,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         bf16=compute_dtype == torch.bfloat16,
@@ -178,7 +216,14 @@ def run_training(args) -> None:
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     train_data, dev_data = load_encoded_data(args, tokenizer)
-    model = load_quantized_model(args.model_path, compute_dtype)
+    model = load_quantized_model(
+        args.model_path,
+        compute_dtype,
+        lora_r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        use_flash_attention=args.use_flash_attention_2,
+    )
     trainer = Trainer(
         model=model,
         args=make_training_args(args, compute_dtype, torch),
