@@ -2,6 +2,8 @@
 
 Runbook này dành cho **train/dev và public test**, chưa phải Docker package cuối gửi BTC. Bundle Vast gồm source và ZIP dataset BTC trong cùng một archive; ZIP được giữ nguyên, không đưa dataset lên GitHub.
 
+Luồng hiện tại trên Vast dùng `notebooks/lifemate_vast_github_resume.ipynb`, tải bundle đã ghim từ GitHub Release rồi resume và đánh giá dev. Nếu đã có project giải nén sẵn hoặc dùng cách upload bundle thủ công, mở `notebooks/lifemate_vast_resume.ipynb` trong project; hai notebook là hai cách thay thế nhau.
+
 ## Chuẩn bị instance
 
 - Chọn Linux x86_64 có NVIDIA CUDA, **tối thiểu 24 GB VRAM** và khoảng **50 GB ổ đĩa trống** để chứa bộ dữ liệu, weights, cache và checkpoint.
@@ -15,17 +17,17 @@ python -c 'import torch; print(torch.__version__, torch.cuda.is_available(), tor
 
 ## Upload và giải nén
 
-Tải lên một file `lifemate-vast-bundle-<commit>.tar.gz`. Tên file có mã commit ngắn để biết chính xác source đang chạy. Giải nén sẽ tạo thư mục `lifemate/` gồm code và `data/archives/train+public_test.zip`. Trên instance:
+Tải lên một file `lifemate-vast-bundle-<bundle-id>.tar.gz`. Giải nén sẽ tạo thư mục `lifemate/` gồm source hiện tại và `data/archives/train+public_test.zip`. Trên instance:
 
 ```bash
-tar -xzf lifemate-vast-bundle-<commit>.tar.gz
+tar -xzf lifemate-vast-bundle-<bundle-id>.tar.gz
 cd lifemate
 sha256sum -c SHA256SUMS
 mkdir -p data/raw
 unzip -n -q data/archives/train+public_test.zip 'train+public_test/*' -d data/raw
 ```
 
-Checksum trong `SHA256SUMS` xác nhận ZIP dữ liệu nguyên vẹn. Dataset và thư mục giải nén chỉ ở instance của đội; không commit chúng lên GitHub.
+File `.sha256` cạnh archive xác nhận gói upload nguyên vẹn. `SHA256SUMS` bên trong `lifemate/` kiểm tra source và ZIP dữ liệu sau khi bung. Dataset và thư mục giải nén chỉ ở instance của đội; không commit chúng lên GitHub.
 
 ## Cài môi trường, tải model và tạo SFT
 
@@ -47,6 +49,7 @@ python training/train_lora.py \
   --train-jsonl data/processed/sft/train.jsonl \
   --dev-jsonl data/processed/sft/dev.jsonl \
   --limit-train-samples 64 --limit-dev-samples 16 --epochs 1 \
+  --disable-early-stopping \
   --output-dir models/lifemate-qwen3-4b-smoke
 python training/evaluate_dev.py \
   --adapter models/lifemate-qwen3-4b-smoke/final \
@@ -58,7 +61,10 @@ Nếu smoke chạy hết và có report, mới train toàn bộ train split:
 ```bash
 python training/train_lora.py \
   --train-jsonl data/processed/sft/train.jsonl \
-  --dev-jsonl data/processed/sft/dev.jsonl
+  --dev-jsonl data/processed/sft/dev.jsonl \
+  --epochs 30 --learning-rate 5e-5 \
+  --evals-per-epoch 2 --early-stopping-patience 4 \
+  --output-dir models/lifemate-qwen3-4b-lora
 python training/evaluate_dev.py \
   --adapter models/lifemate-qwen3-4b-lora/final \
   --report reports/runs/dev_lora.json

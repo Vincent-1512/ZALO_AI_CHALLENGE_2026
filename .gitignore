@@ -13,6 +13,8 @@ private_test/
 /checkpoints/
 /outputs/
 /runs/
+/lifemate_runs/
+/submission*.jsonl
 /artifacts/
 /result/
 /reports/runs/
