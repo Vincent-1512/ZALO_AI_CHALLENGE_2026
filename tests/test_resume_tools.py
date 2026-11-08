@@ -23,6 +23,19 @@ class FakeEnv:
         return {"ok": self.ok, "error": None if self.ok else "bad"}
 
 
+class CandidateEnv:
+    def __init__(self):
+        self.validated = []
+        self.state = {"unchanged": True}
+
+    def validate(self, name, arguments):
+        self.validated.append((name, arguments))
+        return {"ok": name == "right.tool", "error": None}
+
+    def get_tool_calls(self):
+        return []
+
+
 class EndReasonTests(unittest.TestCase):
     def step(self, actions, env_ok=True):
         queue = list(actions)
@@ -52,6 +65,35 @@ class EndReasonTests(unittest.TestCase):
         queue = [{"action": "stop"}]
         with mock.patch.object(runner, "_next_action", side_effect=lambda *a, **k: queue.pop(0)):
             self.assertIsNone(runner._action_for_step(None, FakeEnv(), {}, "", {}, {}, [], None))
+
+    def test_best_of_k_votes_over_schema_valid_actions_without_execution(self):
+        env = CandidateEnv()
+        actions = [
+            {"action": "call", "name": "wrong.tool", "arguments": {}},
+            {"action": "call", "name": "right.tool", "arguments": {"b": 2, "a": 1}},
+            {"action": "call", "name": "right.tool", "arguments": {"a": 1, "b": 2}},
+        ]
+        profile = {"policy_seconds": 0.0, "tool_seconds": 0.0}
+        with mock.patch.object(runner, "_sample_actions", return_value=actions):
+            result = runner._action_for_step(None, env, {}, "", {}, {}, [], profile,
+                                             num_samples=3, temperature=0.7)
+        self.assertEqual(result["name"], "right.tool")
+        self.assertEqual(profile["candidate_valid_count"], 2)
+        self.assertEqual(profile["candidate_agreement"], [1.0])
+        self.assertEqual(env.state, {"unchanged": True})
+        self.assertEqual(env.validated, [
+            ("wrong.tool", {}), ("right.tool", {"b": 2, "a": 1}),
+            ("right.tool", {"a": 1, "b": 2}),
+        ])
+
+    def test_best_of_k_uses_baseline_retry_path_when_no_valid_candidates(self):
+        env = CandidateEnv()
+        call = {"action": "call", "name": "right.tool", "arguments": {}}
+        with mock.patch.object(runner, "_sample_actions", return_value=[None, None]), \
+             mock.patch.object(runner, "_next_action", return_value=call) as next_action:
+            result = runner._action_for_step(None, env, {}, "", {}, {}, [], None, num_samples=2)
+        self.assertEqual(result, call)
+        next_action.assert_called_once()
 
 
 class AsrCacheTests(unittest.TestCase):

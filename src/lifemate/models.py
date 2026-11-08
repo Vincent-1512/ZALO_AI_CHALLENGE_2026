@@ -31,6 +31,21 @@ def _asr_model_fingerprint(model_path: str | Path) -> dict[str, Any]:
     }
 
 
+def asr_cache_key(paths: list[str | Path], max_new_tokens: int = 128) -> str:
+    """Key the memoized batch by audio bytes, not filenames or timestamps."""
+    audio_hashes = []
+    for path in paths:
+        digest = hashlib.sha256()
+        with Path(path).open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        audio_hashes.append(digest.hexdigest())
+    payload = json.dumps(
+        {"max_new_tokens": max_new_tokens, "audio_sha256": audio_hashes}, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 class SpeechRecognizer:
     def __init__(self, model_path: str | Path, batch_size: int = 4, sample_rate: int = 16000):
         import torch
@@ -66,18 +81,7 @@ class SpeechRecognizer:
                     print("ASR cache metadata differs from this run; ignoring the cache file", flush=True)
 
     def _cache_key(self, paths: list[Path], max_new_tokens: int) -> str:
-        audio_hashes = []
-        for path in paths:
-            digest = hashlib.sha256()
-            with Path(path).open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-            audio_hashes.append(digest.hexdigest())
-        payload = json.dumps(
-            {"max_new_tokens": max_new_tokens, "audio_sha256": audio_hashes},
-            separators=(",", ":"),
-        ).encode("utf-8")
-        return hashlib.sha256(payload).hexdigest()
+        return asr_cache_key(paths, max_new_tokens)
 
     def _save_cache(self) -> None:
         target = Path(self._cache_path)
@@ -227,3 +231,33 @@ class ToolAgent:
             )
         new_tokens = output_ids[0, input_ids.shape[-1] :]
         return parse_action(self.tokenizer.decode(new_tokens, skip_special_tokens=True))
+
+    def predict_candidates(
+        self, messages: list[dict[str, str]], num_samples: int, temperature: float | None = None
+    ) -> list[dict[str, Any] | None]:
+        """Sample multiple JSON actions; callers must schema-validate before execution."""
+        if num_samples < 2:
+            return [self.predict(messages)]
+        if temperature is None or temperature <= 0:
+            raise ValueError("temperature must be positive when num_samples > 1")
+        from .prompts import fit_messages
+
+        input_ids = fit_messages(messages, self.tokenizer, self.max_input_tokens).to(self.model.device)
+        attention_mask = self.torch.ones_like(input_ids)
+        with self.torch.inference_mode():
+            output_ids = self.model.generate(
+                input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=True,
+                temperature=temperature,
+                num_return_sequences=num_samples,
+                num_beams=1,
+                pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                use_cache=True,
+            )
+        return [
+            parse_action(self.tokenizer.decode(row[input_ids.shape[-1] :], skip_special_tokens=True))
+            for row in output_ids
+        ]

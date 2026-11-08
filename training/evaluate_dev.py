@@ -81,6 +81,9 @@ def parse_args():
     parser.add_argument("--report", default="reports/runs/dev_metrics.json")
     parser.add_argument("--per-sample-log", help="Write one JSON line per dev sample (ASR text, gold vs predicted calls, end reason)")
     parser.add_argument("--asr-cache", help="Optional JSON file that memoises ASR transcripts across evaluations")
+    parser.add_argument("--asr-correct", action="store_true", help="Repair ASR spans from sample context")
+    parser.add_argument("--num-samples", type=int, default=1, help="Best-of-k action candidates per step")
+    parser.add_argument("--temperature", type=float, help="Sampling temperature; only with --num-samples > 1")
     return parser.parse_args()
 
 
@@ -117,11 +120,12 @@ def load_agent(config: dict, args):
 
 
 def evaluate_sample(sample, runtime):
-    tool_env, split, catalog, index, state_hash, asr, agent, max_steps = runtime
+    tool_env, split, catalog, index, state_hash, asr, agent, max_steps, asr_correct, num_samples, temperature = runtime
     profile = {}
     calls, _, env = infer_one(
         sample, tool_env, split, catalog, asr, agent, max_steps,
-        return_env_for_train_eval=True, profile=profile,
+        return_env_for_train_eval=True, profile=profile, asr_correct=asr_correct,
+        num_samples=num_samples, temperature=temperature,
     )
     expected = sample["label"]["tool_calls"]
     return {
@@ -197,6 +201,10 @@ def build_report(results: list[dict]) -> dict:
 
 def main() -> None:
     args = parse_args()
+    if args.num_samples < 1:
+        raise ValueError("--num-samples must be >= 1")
+    if args.temperature is not None and (args.num_samples == 1 or args.temperature <= 0):
+        raise ValueError("--temperature must be positive and requires --num-samples > 1")
     import torch
 
     if not torch.cuda.is_available():
@@ -210,7 +218,8 @@ def main() -> None:
         rows = rows[: args.limit_samples]
         print(f"Evaluating first {len(rows)} dev samples", flush=True)
     asr, agent = load_agent(config, args)
-    runtime = (tool_env, split, catalog, index, state_hash, asr, agent, config["limits"]["max_tool_steps"])
+    runtime = (tool_env, split, catalog, index, state_hash, asr, agent,
+               config["limits"]["max_tool_steps"], args.asr_correct, args.num_samples, args.temperature)
     results = []
     started = time.perf_counter()
     log_stream = None
@@ -223,6 +232,11 @@ def main() -> None:
         if log_stream:
             record = {key: outcome[key] for key in ("id", "state_match", "matched_calls", "predicted_calls", "gold_calls")}
             record.update(outcome["detail"])
+            if args.asr_correct:
+                record["asr_corrections"] = outcome["profile"].get("asr_corrections", [])
+            if args.num_samples > 1:
+                record["candidate_valid_count"] = outcome["profile"].get("candidate_valid_count", 0)
+                record["candidate_agreement"] = outcome["profile"].get("candidate_agreement", [])
             record["total_seconds"] = round(outcome["profile"].get("total_seconds", 0.0), 3)
             log_stream.write(json.dumps(record, ensure_ascii=False) + "\n")
             log_stream.flush()
