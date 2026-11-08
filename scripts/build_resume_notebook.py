@@ -49,21 +49,22 @@ def source_cell(notebook: dict, index: int, must_contain: str) -> str:
     return text
 
 
-MD_TITLE = """# LifeMate Vast — tiếp tục từ checkpoint-1524 (nhanh hơn, có đo dev trước khi nộp)
+MD_TITLE = """# LifeMate Vast — đánh giá checkpoint 1524 và thử warm-start có kiểm soát
 
 Chỉ cần upload **notebook này** và file `lifemate-resume-latest.tar.gz` (checkpoint 1524) lên Vast, chọn kernel Python 3.12+ rồi Run All từ trên xuống.
 
 **Notebook làm gì**
 1. Tải bundle code + dữ liệu cũ, nhập checkpoint 1524, **sao lưu 1524 sang thư mục riêng** trước mọi thứ khác.
 2. Áp bản code đã sửa (có SHA-256 kiểm tra, giữ bản gốc `.orig`).
-3. Chạy theo `MODE` ở cell cấu hình:
+3. Đo dev baseline 1524 và lưu báo cáo từng mẫu **trước khi train**.
+4. Chạy theo `MODE` ở cell cấu hình:
    - `warmstart` *(mặc định)*: run **mới và ngắn** từ trọng số adapter 1524, optimizer/scheduler mới, LR thấp giảm dần về 0. Ghi ra thư mục riêng, không đụng `full/`.
    - `continue`: tiếp tục đúng run cũ từ 1524 (giống notebook trước). Run này sẽ tự dừng sau ~1–2 lần eval vì early stopping vẫn so với loss tốt nhất 0,03678.
-   - `eval_only`: chỉ đo dev và (tuỳ chọn) tạo public submission cho 1524.
-4. Đo dev rollout cho 1524 và adapter mới, **chọn adapter theo dev**, rồi chỉ tạo public submission cho adapter được chọn.
-5. Đóng gói kết quả để tải về.
+   - `eval_only`: chỉ đo dev; mặc định chọn baseline.
+5. Đo dev rollout cho adapter ứng viên; chọn `PUBLIC_CHOICE` tường minh. Nếu ứng viên kém baseline state-match quá ngưỡng, public inference bị chặn.
+6. Đóng gói kết quả để tải về.
 
-**Lưu ý trung thực:** `warmstart` với LR 2e-5 là *giả thuyết* (lịch LR cũ gần như không giảm). Chưa có bằng chứng nó tăng điểm; bước đo dev ở giữa là để kiểm chứng. Dev chỉ có 154 mẫu nên sai số khoảng ±4 điểm phần trăm; chênh lệch nhỏ không đủ kết luận.
+**Lưu ý trung thực:** `warmstart` với LR 2e-5 là *giả thuyết cần đo* (lịch LR cũ gần như không giảm), không phải cấu hình đã tối ưu. Dev chỉ có 154 mẫu; sai số xấp xỉ ±4 điểm phần trăm. Call-F1 là chỉ số diagnostic tự tính, chưa chứng minh trùng công thức BTC và không dùng để kết luận kỹ thuật nào làm tăng điểm.
 
 **Thời gian (ước tính, chưa đo trên GPU của bạn):** các checkpoint đầu cho thấy khoảng 30 giây/bước tối ưu hoá, tức ~4–5 giờ cho 508 bước. Đo dev 154 mẫu mỗi adapter thêm một khoảng nữa; cache ASR giúp lần đo thứ hai và public nhanh hơn.
 """
@@ -90,11 +91,12 @@ MODE = "warmstart"      # "warmstart" | "continue" | "eval_only"
 WARM_LR = 2e-5          # giả thuyết cần đo; đổi MỘT thông số mỗi lần nếu thử lại
 WARM_MAX_STEPS = 508    # 1 epoch dữ liệu augmentation; cosine giảm về ~0 trong đúng số bước này
 WARM_SEED = 2027        # khác 2026 để không lặp lại đúng thứ tự dữ liệu epoch đầu của run cũ
+SMOKE_TEST = True       # smoke 2 bước warm-start trước run ngắn
 
 EVAL_BASELINE = True    # đo dev cho 1524 (cần để so sánh; dùng cache ASR nên lần sau nhanh hơn)
 RUN_PUBLIC = True       # tạo public submission cho adapter được chọn
-PUBLIC_CHOICE = "auto"  # "auto" (chọn theo dev) | "baseline" (1524) | "candidate" (adapter mới)
-MIN_GAIN = 0.0          # adapter mới phải vượt 1524 về state-match thêm ít nhất chừng này mới được chọn
+PUBLIC_CHOICE = "baseline" if MODE == "eval_only" else "candidate"  # chọn tường minh; không tự xếp hạng adapter
+SKIP_PUBLIC_IF_WORSE_BY = 0.03  # chặn nếu candidate state-match kém baseline >3 điểm %; None để tắt
 
 # --- Thông số run gốc (không đổi: dùng để tái tạo đúng dữ liệu và kiểm hash) ---
 RUN_ID = "vast-20261106-124816"
@@ -110,8 +112,10 @@ EARLY_STOPPING_THRESHOLD = 0.001
 SCHEMA_PERMUTATIONS = 1
 
 assert MODE in {"warmstart", "continue", "eval_only"}
-assert PUBLIC_CHOICE in {"auto", "baseline", "candidate"}
+assert PUBLIC_CHOICE in {"baseline", "candidate"}
+assert SKIP_PUBLIC_IF_WORSE_BY is None or SKIP_PUBLIC_IF_WORSE_BY >= 0
 print("MODE =", MODE)
+print("PUBLIC_CHOICE =", PUBLIC_CHOICE)
 '''
 
 CELL_BOOTSTRAP_CALL = r'''PROJECT_DIR = bootstrap_github_release(
@@ -209,8 +213,26 @@ def run(cmd):
     subprocess.run(list(map(str, cmd)), cwd=PROJECT_DIR, check=True)
 
 def latest_checkpoint(folder):
-    found = [p for p in folder.glob("checkpoint-*") if p.is_dir()]
-    return max(found, key=lambda p: int(p.name.rsplit("-", 1)[1])) if found else None
+    required = ("adapter_config.json", "adapter_model.safetensors", "optimizer.pt",
+                "scheduler.pt", "rng_state.pth", "trainer_state.json")
+    found = []
+    for path in folder.glob("checkpoint-*"):
+        if not path.is_dir():
+            continue
+        try:
+            step = int(path.name.rsplit("-", 1)[1])
+            missing = [name for name in required if not (path / name).is_file() or (path / name).stat().st_size == 0]
+            if missing:
+                print(f"Bỏ checkpoint thiếu file {path.name}: {missing}", flush=True)
+                continue
+            state = json.loads((path / "trainer_state.json").read_text(encoding="utf-8"))
+            if state.get("global_step") != step:
+                print(f"Bỏ checkpoint step không khớp {path.name}: global_step={state.get('global_step')}", flush=True)
+                continue
+            found.append((step, path))
+        except (ValueError, OSError, json.JSONDecodeError) as error:
+            print(f"Bỏ checkpoint lỗi {path.name}: {type(error).__name__}: {error}", flush=True)
+    return max(found, default=(None, None), key=lambda item: item[0])[1]
 
 print("Run:", RUN_DIR)
 '''
@@ -280,6 +302,8 @@ if MODE == "continue":
         print("full/final đã có; bỏ qua train.")
     else:
         resume_from = latest_checkpoint(FULL_DIR)
+        if resume_from is None:
+            raise FileNotFoundError(f"Không có checkpoint đầy đủ để resume trong {FULL_DIR}")
         run([sys.executable, "training/train_lora.py", *common, "--seed", SEED,
              "--max-sequence-length", selected_context, "--learning-rate", LR_ORIG,
              "--early-stopping-patience", EARLY_STOPPING_PATIENCE,
@@ -294,6 +318,12 @@ elif MODE == "warmstart":
         print("warm_from_1524/final đã có; bỏ qua train.")
     else:
         interrupted = latest_checkpoint(WARM_DIR)
+        partial_checkpoints = list(WARM_DIR.glob("checkpoint-*")) if WARM_DIR.exists() else []
+        if interrupted is None and partial_checkpoints:
+            raise FileNotFoundError(
+                f"Có checkpoint warm-start nhưng không có bản đầy đủ để resume trong {WARM_DIR}; "
+                "giữ nguyên thư mục để kiểm tra, không khởi tạo run mới đè lên."
+            )
         # Run warm-start bị ngắt giữa chừng thì tiếp tục đúng run đó; nếu không, khởi tạo từ adapter 1524.
         start = ["--resume-from-checkpoint", interrupted] if interrupted else ["--warm-start-adapter", BASE_CKPT]
         run([sys.executable, "training/train_lora.py", *common, "--seed", WARM_SEED,
@@ -308,7 +338,38 @@ if CAND_ADAPTER is not None and not (CAND_ADAPTER / "adapter_config.json").is_fi
 print("Adapter ứng viên:", CAND_ADAPTER)
 '''
 
-CELL_DEV = r'''def dev_eval(tag, adapter):
+CELL_SMOKE = r'''if MODE == "warmstart" and SMOKE_TEST:
+    smoke_dir = RUN_DIR / "smoke_warm"
+    if smoke_dir.exists():
+        raise FileExistsError(f"Thư mục smoke đã tồn tại; giữ nguyên để kiểm tra: {smoke_dir}")
+    smoke_command = [sys.executable, "training/train_lora.py", *common,
+        "--seed", WARM_SEED,
+        "--max-sequence-length", selected_context,
+        "--learning-rate", WARM_LR,
+        "--epochs", 1,
+        "--max-steps", 2,
+        "--limit-train-samples", 8,
+        "--limit-dev-samples", 4,
+        "--evals-per-epoch", 1,
+        "--disable-early-stopping",
+        "--no-load-best",
+        "--save-total-limit", 1,
+        "--output-dir", smoke_dir,
+        "--warm-start-adapter", BASE_CKPT,
+    ]
+    try:
+        run(smoke_command)
+    except Exception as error:
+        raise RuntimeError(f"Smoke warm-start lỗi; giữ output để kiểm tra tại {smoke_dir}") from error
+    if not (smoke_dir / "final/adapter_config.json").is_file():
+        raise RuntimeError(f"Smoke không tạo adapter; giữ output để kiểm tra tại {smoke_dir}")
+    shutil.rmtree(smoke_dir)
+    print("Smoke warm-start 2 bước đạt; đã xóa output tạm.")
+else:
+    print("Bỏ smoke warm-start (MODE khác warmstart hoặc SMOKE_TEST=False).")
+'''
+
+CELL_DEV_BASELINE = r'''def dev_eval(tag, adapter):
     report = RUN_DIR / f"dev_{tag}.json"
     weights = Path(adapter) / "adapter_model.safetensors"
     if report.is_file() and report.stat().st_mtime > weights.stat().st_mtime:
@@ -321,7 +382,10 @@ CELL_DEV = r'''def dev_eval(tag, adapter):
     return json.loads(report.read_text())
 
 BASE_REPORT = dev_eval("ckpt1524", BASE_CKPT) if EVAL_BASELINE else None
-CAND_REPORT = dev_eval(f"cand_{MODE}", CAND_ADAPTER) if (CAND_ADAPTER and MODE != "eval_only") else None
+print("Baseline dev report:", RUN_DIR / "dev_ckpt1524.json" if BASE_REPORT else "không đo")
+'''
+
+CELL_DEV_CANDIDATE = r'''CAND_REPORT = dev_eval(f"cand_{MODE}", CAND_ADAPTER) if (CAND_ADAPTER and MODE != "eval_only") else None
 '''
 
 CELL_COMPARE = r'''def row(name, r):
@@ -333,25 +397,30 @@ CELL_COMPARE = r'''def row(name, r):
 
 print(row("1524 (baseline)", BASE_REPORT))
 print(row(f"ứng viên [{MODE}]", CAND_REPORT))
-
-SELECTED = "baseline"
-if CAND_REPORT is not None and BASE_REPORT is not None:
-    cand_key = (CAND_REPORT["changed_app_state_match_rate"], CAND_REPORT["tool_call_f1_diagnostic"])
-    base_key = (BASE_REPORT["changed_app_state_match_rate"] + MIN_GAIN, BASE_REPORT["tool_call_f1_diagnostic"])
-    SELECTED = "candidate" if cand_key > base_key else "baseline"
-    print("\nDev có 154 mẫu: chênh vài điểm phần trăm có thể chỉ là nhiễu.")
-elif CAND_REPORT is not None:
-    SELECTED = "candidate"
-if PUBLIC_CHOICE != "auto":
-    SELECTED = PUBLIC_CHOICE
+print("\nCảnh báo: dev chỉ có 154 mẫu (sai số xấp xỉ ±4 điểm phần trăm).")
+print("Call-F1 là diagnostic tự tính, chưa chứng minh trùng công thức BTC; không dùng riêng nó để kết luận kỹ thuật nào tăng điểm.")
+SELECTED = PUBLIC_CHOICE
 if SELECTED == "candidate" and CAND_ADAPTER is None:
-    raise RuntimeError("Không có adapter ứng viên (MODE=eval_only); chọn PUBLIC_CHOICE='baseline'.")
+    raise RuntimeError("Không có adapter ứng viên; với MODE=eval_only hãy chọn PUBLIC_CHOICE='baseline'.")
 SELECTED_ADAPTER = CAND_ADAPTER if SELECTED == "candidate" else BASE_CKPT
 print("\nAdapter được chọn cho public:", SELECTED, "->", SELECTED_ADAPTER)
+
+PUBLIC_BLOCK_REASON = None
+if (SELECTED == "candidate" and BASE_REPORT is not None and CAND_REPORT is not None
+        and SKIP_PUBLIC_IF_WORSE_BY is not None):
+    baseline_match = BASE_REPORT["changed_app_state_match_rate"]
+    candidate_match = CAND_REPORT["changed_app_state_match_rate"]
+    if candidate_match < baseline_match - SKIP_PUBLIC_IF_WORSE_BY:
+        PUBLIC_BLOCK_REASON = (
+            f"Candidate state-match {candidate_match:.4f} thấp hơn baseline {baseline_match:.4f} "
+            f"quá ngưỡng {SKIP_PUBLIC_IF_WORSE_BY:.4f}; bỏ public inference. "
+            "Có thể đặt SKIP_PUBLIC_IF_WORSE_BY=None hoặc PUBLIC_CHOICE='baseline' nếu muốn tiếp tục."
+        )
+        print("CHẶN PUBLIC:", PUBLIC_BLOCK_REASON)
 '''
 
 CELL_PUBLIC = r'''submission_path = None
-if RUN_PUBLIC:
+if RUN_PUBLIC and PUBLIC_BLOCK_REASON is None:
     public_input = DATA_ROOT / "public_test/public_test.jsonl"
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
     submission_path = PUBLIC_DIR / f"submission-{SELECTED}-{MODE}-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
@@ -371,6 +440,8 @@ if RUN_PUBLIC:
     if any(set(r) != {"id", "tool_calls", "state_hash"} for r in rows):
         raise RuntimeError("Submission sai schema; cần id, tool_calls, state_hash.")
     print(f"Submission hợp lệ: {submission_path} ({len(rows)} dòng; rỗng={sum(1 for r in rows if not r['tool_calls'])})")
+elif PUBLIC_BLOCK_REASON is not None:
+    print("Không tạo public submission:", PUBLIC_BLOCK_REASON)
 else:
     print("RUN_PUBLIC=False: bỏ qua public inference.")
 '''
@@ -437,7 +508,7 @@ def main() -> None:
         code(helpers),
         code(CELL_BOOTSTRAP_CALL),
         code(CELL_HANDOFF),
-        md("## 2. Áp bản code đã sửa\n\nThêm `--warm-start-adapter`, `--max-steps`, `--no-load-best`, log từng mẫu dev, cache ASR. "
+        md("## 2. Áp bản code đã sửa\n\nThêm `--warm-start-adapter`, `--max-steps`, `--no-load-best`, log từng mẫu dev, cache ASR với fingerprint audio/model. "
            "Prompt và cách suy luận mặc định **không đổi**."),
         code(overlay_cell),
         md("## 3. Đường dẫn và kiểm tra GPU / dữ liệu"),
@@ -448,15 +519,19 @@ def main() -> None:
         code(augment),
         md("## 5. Preflight và kiểm hash dữ liệu"),
         code(CELL_PREFLIGHT),
-        md("## 6. Train (theo `MODE`)\n\nRun nằm trong thư mục riêng nên 1524 không bị ghi đè. "
-           "Nếu instance chết giữa chừng, chạy lại notebook: cell này tự tiếp tục đúng từ checkpoint mới nhất của run đang dở."),
+        md("## 6. Smoke test warm-start (vài phút)\n\nChạy trước các bước dài để lỗi ở đường train nổ sớm. Chỉ áp dụng khi `MODE=\"warmstart\"`."),
+        code(CELL_SMOKE),
+        md("## 7. Đo dev baseline 1524 trước train\n\nBáo cáo và log từng mẫu được tạo trước khi train; cache ASR này dùng lại cho candidate."),
+        code(CELL_DEV_BASELINE),
+        md("## 8. Train (theo `MODE`)\n\nRun nằm riêng nên checkpoint 1524 không bị ghi đè. "
+           "Nếu warm-start bị ngắt, chỉ resume từ checkpoint đầy đủ mới nhất."),
         code(CELL_TRAIN),
-        md("## 7. Đo dev (rollout đầy đủ) cho 1524 và adapter mới"),
-        code(CELL_DEV),
+        md("## 9. Đo dev ứng viên và chọn đích public\n\n`PUBLIC_CHOICE` chọn baseline/candidate một cách tường minh. Call-F1 chỉ là diagnostic."),
+        code(CELL_DEV_CANDIDATE),
         code(CELL_COMPARE),
-        md("## 8. Public submission cho adapter được chọn"),
+        md("## 10. Public inference (có chốt chặn)"),
         code(CELL_PUBLIC),
-        md("## 9. Đóng gói kết quả"),
+        md("## 11. Đóng gói kết quả"),
         code(CELL_PACK),
         md(MD_DONE),
     ]

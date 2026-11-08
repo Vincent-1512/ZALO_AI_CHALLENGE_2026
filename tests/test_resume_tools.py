@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "training"))
 
 from lifemate import runner
-from lifemate.models import SpeechRecognizer
+from lifemate.models import SpeechRecognizer, _asr_model_fingerprint
 import train_lora
 
 
@@ -81,6 +81,28 @@ class AsrCacheTests(unittest.TestCase):
             stored = json.loads(cache.read_text(encoding="utf-8"))
             self.assertEqual(stored["meta"], {"model": "m"})
             self.assertEqual(len(stored["items"]), 1)
+
+    def test_same_size_audio_content_change_misses_cache(self):
+        with tempfile.TemporaryDirectory() as folder:
+            audio = Path(folder) / "a.wav"
+            audio.write_bytes(b"12345")
+            asr = self.make(Path(folder) / "cache.json")
+            asr.transcribe_many([audio])
+            audio.write_bytes(b"abcde")  # same byte length, different audio content
+            asr.transcribe_many([audio])
+            self.assertEqual(asr.calls, 2)
+
+    def test_model_fingerprint_tracks_config_and_weight_inventory(self):
+        with tempfile.TemporaryDirectory() as folder:
+            model = Path(folder)
+            (model / "config.json").write_text("{}")
+            (model / "preprocessor_config.json").write_text("{\"x\":1}")
+            (model / "model.safetensors").write_bytes(b"weights")
+            first = _asr_model_fingerprint(model)
+            (model / "config.json").write_text("{\"x\":1}")
+            second = _asr_model_fingerprint(model)
+            self.assertNotEqual(first, second)
+            self.assertEqual(second["weights"], [("model.safetensors", 7)])
 
     def test_cache_disabled_always_calls_model(self):
         asr = SpeechRecognizer.__new__(SpeechRecognizer)

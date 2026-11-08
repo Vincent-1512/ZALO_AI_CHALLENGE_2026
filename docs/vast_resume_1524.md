@@ -1,18 +1,40 @@
-# Resume LifeMate from checkpoint-1524 on Vast
+# Vast resume notebook for checkpoint 1524
 
-Upload two files to the new Vast instance, open the notebook with a Python 3.12+ kernel, then Run All:
+## Files to upload
+
+Upload these two files to `/workspace` on Vast:
 
 1. `notebooks/lifemate_vast_resume_1524.ipynb`
-2. `lifemate-resume-latest.tar.gz` (checkpoint 1524 handoff, kept locally under `artifacts/handoff/`; SHA-256 `8849e69703fc2a62dd084b15b8ea2f1803b6fd4b8b193d2cf224518f27048b4c`) into `/workspace`.
+2. `artifacts/handoff/lifemate-resume-latest.tar.gz`
 
-The notebook downloads the pinned base bundle (code, dataset, model downloader) from the existing Release `lifemate-resume-508-20261107`, imports checkpoint 1524, backs it up outside `full/`, and applies the patched code embedded in the notebook (SHA-256 checked).
+The archive SHA-256 must be:
 
-`MODE` in the first cell:
+```text
+8849e69703fc2a62dd084b15b8ea2f1803b6fd4b8b193d2cf224518f27048b4c
+```
 
-- `warmstart` (default): a NEW short run initialised from the 1524 adapter weights with a fresh optimizer/scheduler (LR `WARM_LR` decaying to ~0 over `WARM_MAX_STEPS`). Output goes to `lifemate_runs/<run>/warm_from_1524/`. This is not a true resume.
-- `continue`: true resume of the original run from 1524 with identical hyperparameters and data hashes. Early stopping still compares against the old best loss (0.03678), so it stops after one or two more evaluations.
-- `eval_only`: dev evaluation and optional public submission for 1524 only.
+The notebook verifies the archive hash before extracting checkpoint 1524. Use the Python 3.12+ kernel with CUDA enabled. The base source/data bundle and model are fetched by the notebook.
 
-The notebook evaluates 1524 and the new adapter on the 154-sample dev split, selects by dev rollout (not eval loss) and creates the public submission only for the selected adapter. Dev is small, so differences of a few percentage points are within noise.
+## Modes
 
-Regenerate the notebook after changing any embedded file: `python scripts/build_resume_notebook.py`.
+- `MODE="warmstart"`: default. Loads checkpoint 1524 weights into a new run with fresh optimizer/scheduler. The proposed learning rate `2e-5` and 508-step schedule are hypotheses to measure, not established improvements. A two-step smoke test runs first by default.
+- `MODE="continue"`: resumes the original run from the newest complete checkpoint in `full/`. It restores optimizer/scheduler/RNG state and requires the original train/dev hashes.
+- `MODE="eval_only"`: skips training and evaluates checkpoint 1524. Its default public choice is the baseline.
+
+## Notebook order
+
+The notebook bootstraps the pinned source/data bundle, verifies and backs up checkpoint 1524, applies the checksum-verified code overlay, checks GPU/disk/data, installs dependencies, rebuilds the exact SFT files and checks their hashes, then evaluates the baseline on dev before any training. In warm-start mode it runs the two-step smoke test, trains the candidate, evaluates that candidate on the same dev set, and prints the comparisons. The optional ASR cache is shared between the baseline and candidate evaluations.
+
+`PUBLIC_CHOICE` is explicit: `candidate` for warm-start/continue and `baseline` for eval-only by default. Change it to `baseline` or `candidate` deliberately before running the public inference cell. If candidate state-match is more than `SKIP_PUBLIC_IF_WORSE_BY` below baseline, public inference is skipped. Set the threshold to `None` to disable this guard. The guard uses local dev state-match only; it does not predict the official score. `RUN_PUBLIC` controls whether inference is run at all.
+
+Dev has 154 samples, so small changes are noisy. The printed call-F1 is a locally computed diagnostic and is not known to match the contest formula. Do not treat it as proof that a technique improves the official score.
+
+## Regenerate the notebook
+
+The Python builder is the source of truth; do not edit the notebook by hand. Keep Git `HEAD` at `main` commit `d3a68438be04e65138ca4ddf3352174284fc5539` so the builder reads the original overlay hashes from the expected baseline, then run:
+
+```bash
+python scripts/build_resume_notebook.py
+```
+
+The builder embeds patched code and hashes in the notebook. Verify the overlay against the pinned Vast bundle before uploading a regenerated notebook.
