@@ -38,3 +38,15 @@ python scripts/build_resume_notebook.py
 ```
 
 The builder embeds patched code and hashes in the notebook. Verify the overlay against the pinned Vast bundle before uploading a regenerated notebook.
+
+## Handoff 1524 qua GitHub Release (không cần upload tay)
+
+Tạo Release một lần từ máy có `gh` (asset phải đúng tên `lifemate-resume-latest.tar.gz`):
+
+```bash
+gh release create lifemate-resume-1524-20261109 artifacts/handoff/lifemate-resume-latest.tar.gz \
+  --repo Vincent-1512/ZALO_AI_CHALLENGE_2026 --title "LifeMate resume checkpoint-1524" \
+  --notes "Handoff checkpoint-1524. SHA-256 8849e69703fc2a62dd084b15b8ea2f1803b6fd4b8b193d2cf224518f27048b4c"
+```
+
+Notebook mặc định tải asset này (`HANDOFF_RELEASE_TAG`), kiểm SHA-256 và tự dùng file upload tay nếu Release chưa có.

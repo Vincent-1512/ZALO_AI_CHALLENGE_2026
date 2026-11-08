@@ -80,11 +80,12 @@ BUNDLE_SHA256 = "b7413e49c002a7afb6fea52889da370b7961a3e9c847201dac0ff0202f764bb
 WORKSPACE_DIR = Path("/workspace")  # nếu đã có thư mục lifemate/ khác, chọn thư mục mới
 
 # --- Gói checkpoint-1524 ---
-# Upload file này lên /workspace (hoặc điền tag Release nếu đã đưa lên GitHub Release).
+# Notebook tự tải file này từ GitHub Release bên dưới (kiểm SHA-256). Nếu Release chưa có hoặc tải lỗi,
+# upload tay file này lên /workspace rồi chạy lại.
 HANDOFF_ARCHIVE = Path("/workspace/lifemate-resume-latest.tar.gz")
 HANDOFF_NAME = "lifemate-resume-latest.tar.gz"
 HANDOFF_SHA256 = "8849e69703fc2a62dd084b15b8ea2f1803b6fd4b8b193d2cf224518f27048b4c"
-HANDOFF_RELEASE_TAG = ""
+HANDOFF_RELEASE_TAG = "lifemate-resume-1524-20261109"  # để "" nếu chỉ muốn upload tay
 
 # --- Chế độ chạy ---
 MODE = "warmstart"      # "warmstart" | "continue" | "eval_only"
@@ -128,9 +129,13 @@ print("Project:", PROJECT_DIR)
 CELL_HANDOFF = r'''import json, shutil, tarfile
 from pathlib import PurePosixPath
 
-if HANDOFF_RELEASE_TAG:
-    asset = get_release_asset(RELEASE_REPO, HANDOFF_RELEASE_TAG, HANDOFF_NAME, "")
-    download_asset(RELEASE_REPO, asset, HANDOFF_ARCHIVE, HANDOFF_SHA256, "")
+if HANDOFF_RELEASE_TAG and not (HANDOFF_ARCHIVE.is_file() and file_sha256(HANDOFF_ARCHIVE) == HANDOFF_SHA256):
+    try:
+        asset = get_release_asset(RELEASE_REPO, HANDOFF_RELEASE_TAG, HANDOFF_NAME, "")
+        download_asset(RELEASE_REPO, asset, HANDOFF_ARCHIVE, HANDOFF_SHA256, "")
+    except (urllib.error.URLError, FileNotFoundError, RuntimeError, OSError) as error:
+        print(f"Không tải được handoff từ Release {HANDOFF_RELEASE_TAG}: {type(error).__name__}: {error}")
+        print("Sẽ dùng file upload tay nếu có.")
 if not HANDOFF_ARCHIVE.is_file():
     raise FileNotFoundError(f"Upload {HANDOFF_NAME} lên {HANDOFF_ARCHIVE.parent} trước khi chạy cell này.")
 if file_sha256(HANDOFF_ARCHIVE) != HANDOFF_SHA256:
