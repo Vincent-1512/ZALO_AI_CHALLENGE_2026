@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from fractions import Fraction
 from pathlib import Path
@@ -26,6 +27,29 @@ class SpeechRecognizer:
         ).to(self.device).eval()
         self.batch_size = batch_size
         self.sample_rate = sample_rate
+        # Optional memoisation of whole transcribe_many() calls. Off unless LIFEMATE_ASR_CACHE is set,
+        # so scored inference is unchanged. Keys cover the exact audio list, so batches (and outputs) match.
+        self._cache_path = os.environ.get("LIFEMATE_ASR_CACHE") or None
+        self._cache_meta = {"model": Path(path).name, "dtype": str(dtype), "sample_rate": sample_rate,
+                            "batch_size": batch_size, "language": "vi"}
+        self._cache: dict[str, list[str]] = {}
+        if self._cache_path and Path(self._cache_path).is_file():
+            stored = json.loads(Path(self._cache_path).read_text(encoding="utf-8"))
+            if stored.get("meta") == self._cache_meta:
+                self._cache = stored.get("items", {})
+            else:
+                print("ASR cache metadata differs from this run; ignoring the cache file", flush=True)
+
+    def _cache_key(self, paths: list[Path], max_new_tokens: int) -> str:
+        parts = [f"{max_new_tokens}"] + [f"{Path(p).parent.name}/{Path(p).name}:{Path(p).stat().st_size}" for p in paths]
+        return "|".join(parts)
+
+    def _save_cache(self) -> None:
+        target = Path(self._cache_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp = target.with_suffix(target.suffix + ".tmp")
+        temp.write_text(json.dumps({"meta": self._cache_meta, "items": self._cache}, ensure_ascii=False), encoding="utf-8")
+        temp.replace(target)
 
     def _read_audio(self, path: str | Path):
         import numpy as np
@@ -44,6 +68,17 @@ class SpeechRecognizer:
     def transcribe_many(self, paths: list[Path], max_new_tokens: int = 128) -> list[str]:
         if not paths:
             return []
+        if self._cache_path:
+            key = self._cache_key(paths, max_new_tokens)
+            if key in self._cache:
+                return list(self._cache[key])
+            texts = self._transcribe_uncached(paths, max_new_tokens)
+            self._cache[key] = texts
+            self._save_cache()
+            return list(texts)
+        return self._transcribe_uncached(paths, max_new_tokens)
+
+    def _transcribe_uncached(self, paths: list[Path], max_new_tokens: int) -> list[str]:
         audios = [self._read_audio(path) for path in paths]
         results: list[str] = []
         for start in range(0, len(audios), self.batch_size):

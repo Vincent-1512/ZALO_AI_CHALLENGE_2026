@@ -79,6 +79,8 @@ def parse_args():
     parser.add_argument("--adapter")
     parser.add_argument("--limit-samples", type=int, default=0)
     parser.add_argument("--report", default="reports/runs/dev_metrics.json")
+    parser.add_argument("--per-sample-log", help="Write one JSON line per dev sample (ASR text, gold vs predicted calls, end reason)")
+    parser.add_argument("--asr-cache", help="Optional JSON file that memoises ASR transcripts across evaluations")
     return parser.parse_args()
 
 
@@ -123,12 +125,21 @@ def evaluate_sample(sample, runtime):
     )
     expected = sample["label"]["tool_calls"]
     return {
+        "id": sample["id"],
         "state_match": changed_apps_match(env.get_state(), sample["label"]["final_state"], state_hash),
         "matched_calls": maximum_matching(calls, expected, index),
         "predicted_calls": len(calls),
         "gold_calls": len(expected),
         "oos_exact": not calls if not expected else None,
         "profile": profile,
+        "detail": {
+            "asr_text": profile.get("transcript"),
+            "gold_text": sample.get("audio_text"),
+            "end_reason": profile.get("end_reason", "unknown"),
+            "schema_retries": profile.get("schema_retries", 0),
+            "gold_calls": expected,
+            "predicted_calls": calls,
+        },
     }
 
 
@@ -158,7 +169,16 @@ def build_report(results: list[dict]) -> dict:
     recall = matches / gold if gold else 0.0
     oos = [row["oos_exact"] for row in results if row["oos_exact"] is not None]
     profiles = [row["profile"] for row in results]
+    end_reasons: dict[str, int] = {}
+    for row in results:
+        reason = row["profile"].get("end_reason", "unknown")
+        end_reasons[reason] = end_reasons.get(reason, 0) + 1
     return {
+        "end_reason_counts": end_reasons,
+        "state_match_count": sum(row["state_match"] for row in results),
+        "empty_prediction_samples": sum(1 for row in results if row["predicted_calls"] == 0),
+        "empty_gold_samples": sum(1 for row in results if row["gold_calls"] == 0),
+        "schema_retry_total": sum(row["profile"].get("schema_retries", 0) for row in results),
         "split": "train-dev",
         "samples": samples,
         "changed_app_state_match_rate": sum(row["state_match"] for row in results) / samples,
@@ -183,6 +203,8 @@ def main() -> None:
         raise RuntimeError("Train-dev rollout requires a CUDA GPU.")
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    if args.asr_cache:
+        os.environ["LIFEMATE_ASR_CACHE"] = str(Path(args.asr_cache).resolve())
     config, split, tool_env, catalog, index, state_hash, rows = load_evaluation_data(args)
     if args.limit_samples > 0:
         rows = rows[: args.limit_samples]
@@ -191,11 +213,24 @@ def main() -> None:
     runtime = (tool_env, split, catalog, index, state_hash, asr, agent, config["limits"]["max_tool_steps"])
     results = []
     started = time.perf_counter()
+    log_stream = None
+    if args.per_sample_log:
+        Path(args.per_sample_log).parent.mkdir(parents=True, exist_ok=True)
+        log_stream = Path(args.per_sample_log).open("w", encoding="utf-8")
     for sample_index, row in enumerate(rows, start=1):
-        results.append(evaluate_sample(row, runtime))
+        outcome = evaluate_sample(row, runtime)
+        results.append(outcome)
+        if log_stream:
+            record = {key: outcome[key] for key in ("id", "state_match", "matched_calls", "predicted_calls", "gold_calls")}
+            record.update(outcome["detail"])
+            record["total_seconds"] = round(outcome["profile"].get("total_seconds", 0.0), 3)
+            log_stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+            log_stream.flush()
         if sample_index % 10 == 0 or sample_index == len(rows):
             elapsed = time.perf_counter() - started
             print(f"evaluated={sample_index}/{len(rows)} elapsed_seconds={elapsed:.1f}", flush=True)
+    if log_stream:
+        log_stream.close()
     report = build_report(results)
     path = Path(args.report)
     path.parent.mkdir(parents=True, exist_ok=True)
