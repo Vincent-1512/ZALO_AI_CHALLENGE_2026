@@ -50,3 +50,9 @@ gh release create lifemate-resume-1524-20261109 artifacts/handoff/lifemate-resum
 ```
 
 Notebook mặc định tải asset này (`HANDOFF_RELEASE_TAG`), kiểm SHA-256 và tự dùng file upload tay nếu Release chưa có.
+
+## Số epoch và early stopping (warm-start)
+
+- Mặc định 1 epoch (508 bước, `WARM_MAX_STEPS`), LR giảm dần về ~0 đúng trong số bước đó. Điểm public tăng qua ba lần nộp (checkpoint 508, 1016, 1524) dù eval loss xấu đi sau bước 762, nên không dùng eval loss để chọn checkpoint.
+- Eval dev loss 4 lần/epoch (`WARM_EVALS_PER_EPOCH`). Early stopping (`WARM_EARLY_STOP`, patience `WARM_PATIENCE`, ngưỡng `WARM_THRESHOLD`) chỉ là van an toàn khi loss xấu đi liên tục; với run 1 epoch nó hiếm khi kích hoạt. Adapter cuối là trọng số cuối run (`--no-load-best`).
+- Thời gian là ước tính, chưa đo. Dùng GPU nhanh hơn cho bước train nếu có.

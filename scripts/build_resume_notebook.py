@@ -58,7 +58,7 @@ Chỉ cần upload **notebook này** và file `lifemate-resume-latest.tar.gz` (c
 2. Áp bản code đã sửa (có SHA-256 kiểm tra, giữ bản gốc `.orig`).
 3. Đo dev baseline 1524 và lưu báo cáo từng mẫu **trước khi train**.
 4. Chạy theo `MODE` ở cell cấu hình:
-   - `warmstart` *(mặc định)*: run **mới và ngắn** từ trọng số adapter 1524, optimizer/scheduler mới, LR thấp giảm dần về 0. Ghi ra thư mục riêng, không đụng `full/`.
+   - `warmstart` *(mặc định)*: run **mới và ngắn** (1 epoch = 508 bước) từ trọng số adapter 1524, optimizer/scheduler mới, LR thấp giảm dần về 0. Eval dev loss 4 lần/epoch; early stopping bật như van an toàn (patience 3, so với lần tốt nhất trong run này) và adapter cuối là trọng số **cuối run**, không phải checkpoint có loss thấp nhất. Ghi ra thư mục riêng, không đụng `full/`.
    - `continue`: tiếp tục đúng run cũ từ 1524 (giống notebook trước). Run này sẽ tự dừng sau ~1–2 lần eval vì early stopping vẫn so với loss tốt nhất 0,03678.
    - `eval_only`: chỉ đo dev; mặc định chọn baseline.
 5. Đo dev rollout cho adapter ứng viên; chọn `PUBLIC_CHOICE` tường minh. Nếu ứng viên kém baseline state-match quá ngưỡng, public inference bị chặn.
@@ -92,6 +92,10 @@ MODE = "warmstart"      # "warmstart" | "continue" | "eval_only"
 WARM_LR = 2e-5          # giả thuyết cần đo; đổi MỘT thông số mỗi lần nếu thử lại
 WARM_MAX_STEPS = 508    # 1 epoch dữ liệu augmentation; cosine giảm về ~0 trong đúng số bước này
 WARM_SEED = 2027        # khác 2026 để không lặp lại đúng thứ tự dữ liệu epoch đầu của run cũ
+WARM_EVALS_PER_EPOCH = 4   # eval dev loss mỗi ~127 bước (4 lần/epoch) để early stopping có chỗ tác dụng
+WARM_EARLY_STOP = True     # chỉ là van an toàn; chạy đủ 508 bước thì không kích hoạt. Eval loss KHÔNG phản ánh điểm public
+WARM_PATIENCE = 3          # dừng nếu 3 lần eval liên tiếp không tốt hơn lần tốt nhất TRONG run này
+WARM_THRESHOLD = 0.0005    # cải thiện nhỏ hơn mức này không tính; dev loss dao động ~0.001
 SMOKE_TEST = True       # smoke 2 bước warm-start trước run ngắn
 
 EVAL_BASELINE = True    # đo dev cho 1524 (cần để so sánh; dùng cache ASR nên lần sau nhanh hơn)
@@ -114,6 +118,7 @@ SCHEMA_PERMUTATIONS = 1
 
 assert MODE in {"warmstart", "continue", "eval_only"}
 assert PUBLIC_CHOICE in {"baseline", "candidate"}
+assert WARM_EVALS_PER_EPOCH >= 1 and WARM_PATIENCE >= 1 and WARM_THRESHOLD >= 0
 assert SKIP_PUBLIC_IF_WORSE_BY is None or SKIP_PUBLIC_IF_WORSE_BY >= 0
 print("MODE =", MODE)
 print("PUBLIC_CHOICE =", PUBLIC_CHOICE)
@@ -334,7 +339,10 @@ elif MODE == "warmstart":
         run([sys.executable, "training/train_lora.py", *common, "--seed", WARM_SEED,
              "--max-sequence-length", selected_context, "--learning-rate", WARM_LR,
              "--epochs", MAX_EPOCHS, "--max-steps", WARM_MAX_STEPS,
-             "--disable-early-stopping", "--no-load-best", "--save-total-limit", 4,
+             "--evals-per-epoch", WARM_EVALS_PER_EPOCH,
+             *(["--early-stopping-patience", WARM_PATIENCE, "--early-stopping-threshold", WARM_THRESHOLD]
+               if WARM_EARLY_STOP else ["--disable-early-stopping"]),
+             "--no-load-best", "--save-total-limit", 5,
              "--output-dir", WARM_DIR, *start])
     CAND_ADAPTER = WARM_DIR / "final"
 
