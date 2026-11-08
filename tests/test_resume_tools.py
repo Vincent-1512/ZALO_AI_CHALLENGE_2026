@@ -127,6 +127,10 @@ class TrainArgumentTests(unittest.TestCase):
         args = self.parse()
         self.assertEqual((args.max_steps, args.save_total_limit, args.no_load_best, args.warm_start_adapter),
                          (0, 3, False, None))
+        self.assertFalse(args.no_gradient_checkpointing)
+
+    def test_no_gradient_checkpointing_flag_parses(self):
+        self.assertTrue(self.parse("--no-gradient-checkpointing").no_gradient_checkpointing)
 
     def test_warm_start_and_resume_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit):

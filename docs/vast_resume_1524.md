@@ -56,3 +56,10 @@ Notebook mặc định tải asset này (`HANDOFF_RELEASE_TAG`), kiểm SHA-256 
 - Mặc định 1 epoch (508 bước, `WARM_MAX_STEPS`), LR giảm dần về ~0 đúng trong số bước đó. Điểm public tăng qua ba lần nộp (checkpoint 508, 1016, 1524) dù eval loss xấu đi sau bước 762, nên không dùng eval loss để chọn checkpoint.
 - Eval dev loss 4 lần/epoch (`WARM_EVALS_PER_EPOCH`). Early stopping (`WARM_EARLY_STOP`, patience `WARM_PATIENCE`, ngưỡng `WARM_THRESHOLD`) chỉ là van an toàn khi loss xấu đi liên tục; với run 1 epoch nó hiếm khi kích hoạt. Adapter cuối là trọng số cuối run (`--no-load-best`).
 - Thời gian là ước tính, chưa đo. Dùng GPU nhanh hơn cho bước train nếu có.
+
+## Công tắc tốc độ (mặc định giữ nguyên hành vi, chỉ cho `MODE="warmstart"`)
+
+- `WARM_GRAD_CKPT=False`: tắt gradient checkpointing, nhanh hơn nhưng cần khoảng 80 GB VRAM (A100/H100 80GB). Khi tắt, smoke test chạy các bản ghi dài nhất trước để lộ lỗi hết bộ nhớ sớm. Mức nhanh hơn chưa đo.
+- `WARM_USE_AUGMENT=False`: chỉ dùng dữ liệu gốc, không có bản đảo thứ tự tool; 1 epoch còn ~254 bước. Thứ tự tool lúc inference cố định theo bảng chữ cái, nên bản đảo chủ yếu có tác dụng điều hòa; ảnh hưởng đến điểm là giả thuyết chưa đo.
+- `STOP_AFTER_BASELINE=True`: dừng sau khi đo dev baseline để xem log lỗi rồi mới quyết định train.
+- Smoke test in tên GPU và thời gian smoke 2 bước (gồm nạp model) để ước lượng tốc độ.

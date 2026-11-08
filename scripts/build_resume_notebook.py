@@ -59,6 +59,7 @@ Chỉ cần upload **notebook này** và file `lifemate-resume-latest.tar.gz` (c
 3. Đo dev baseline 1524 và lưu báo cáo từng mẫu **trước khi train**.
 4. Chạy theo `MODE` ở cell cấu hình:
    - `warmstart` *(mặc định)*: run **mới và ngắn** (1 epoch = 508 bước) từ trọng số adapter 1524, optimizer/scheduler mới, LR thấp giảm dần về 0. Eval dev loss 4 lần/epoch; early stopping bật như van an toàn (patience 3, so với lần tốt nhất trong run này) và adapter cuối là trọng số **cuối run**, không phải checkpoint có loss thấp nhất. Ghi ra thư mục riêng, không đụng `full/`.
+   - Công tắc tốc độ (mặc định giữ nguyên hành vi): `WARM_GRAD_CKPT=False` (GPU 80 GB), `WARM_USE_AUGMENT=False` (bỏ bản đảo thứ tự tool, ~254 bước/epoch), `STOP_AFTER_BASELINE=True` (dừng sau baseline). Chỉ áp dụng cho `warmstart`; mức tăng tốc và ảnh hưởng điểm chưa đo.
    - `continue`: tiếp tục đúng run cũ từ 1524 (giống notebook trước). Run này sẽ tự dừng sau ~1–2 lần eval vì early stopping vẫn so với loss tốt nhất 0,03678.
    - `eval_only`: chỉ đo dev; mặc định chọn baseline.
 5. Đo dev rollout cho adapter ứng viên; chọn `PUBLIC_CHOICE` tường minh. Nếu ứng viên kém baseline state-match quá ngưỡng, public inference bị chặn.
@@ -96,6 +97,9 @@ WARM_EVALS_PER_EPOCH = 4   # eval dev loss mỗi ~127 bước (4 lần/epoch) đ
 WARM_EARLY_STOP = True     # chỉ là van an toàn; chạy đủ 508 bước thì không kích hoạt. Eval loss KHÔNG phản ánh điểm public
 WARM_PATIENCE = 3          # dừng nếu 3 lần eval liên tiếp không tốt hơn lần tốt nhất TRONG run này
 WARM_THRESHOLD = 0.0005    # cải thiện nhỏ hơn mức này không tính; dev loss dao động ~0.001
+WARM_GRAD_CKPT = True      # False = nhanh hơn nhưng cần ~80 GB VRAM (A100/H100 80GB); smoke test sẽ thử bản dài nhất trước
+WARM_USE_AUGMENT = True    # False = chỉ dùng bản gốc, không có bản đảo thứ tự tool: 1 epoch còn ~254 bước (hiệu quả với điểm là giả thuyết)
+STOP_AFTER_BASELINE = False  # True = dừng sau khi đo dev baseline để xem log lỗi rồi mới quyết định train
 SMOKE_TEST = True       # smoke 2 bước warm-start trước run ngắn
 
 EVAL_BASELINE = True    # đo dev cho 1524 (cần để so sánh; dùng cache ASR nên lần sau nhanh hơn)
@@ -306,6 +310,11 @@ print("Train/dev SHA-256 khớp run gốc.")
 CELL_TRAIN = r'''CAND_ADAPTER = None
 CAND_DIR = None
 
+if STOP_AFTER_BASELINE:
+    if isinstance(BASE_REPORT, dict):
+        print("end_reason_counts:", BASE_REPORT.get("end_reason_counts"))
+    raise RuntimeError("Dừng theo STOP_AFTER_BASELINE=True: xem log dev baseline rồi đặt False để train.")
+
 if MODE == "continue":
     CAND_DIR = FULL_DIR
     if (FULL_DIR / "final/adapter_config.json").is_file():
@@ -336,7 +345,11 @@ elif MODE == "warmstart":
             )
         # Run warm-start bị ngắt giữa chừng thì tiếp tục đúng run đó; nếu không, khởi tạo từ adapter 1524.
         start = ["--resume-from-checkpoint", interrupted] if interrupted else ["--warm-start-adapter", BASE_CKPT]
-        run([sys.executable, "training/train_lora.py", *common, "--seed", WARM_SEED,
+        warm_common = list(common)
+        if not WARM_USE_AUGMENT:
+            warm_common[warm_common.index("--train-jsonl") + 1] = TRAIN_JSONL
+        run([sys.executable, "training/train_lora.py", *warm_common, "--seed", WARM_SEED,
+             *([] if WARM_GRAD_CKPT else ["--no-gradient-checkpointing"]),
              "--max-sequence-length", selected_context, "--learning-rate", WARM_LR,
              "--epochs", MAX_EPOCHS, "--max-steps", WARM_MAX_STEPS,
              "--evals-per-epoch", WARM_EVALS_PER_EPOCH,
@@ -361,7 +374,7 @@ CELL_SMOKE = r'''if MODE == "warmstart" and SMOKE_TEST:
         "--learning-rate", WARM_LR,
         "--epochs", 1,
         "--max-steps", 2,
-        "--limit-train-samples", 8,
+        *(["--limit-train-samples", 8] if WARM_GRAD_CKPT else ["--longest-first", "--no-gradient-checkpointing"]),
         "--limit-dev-samples", 4,
         "--evals-per-epoch", 1,
         "--disable-early-stopping",
@@ -371,7 +384,12 @@ CELL_SMOKE = r'''if MODE == "warmstart" and SMOKE_TEST:
         "--warm-start-adapter", BASE_CKPT,
     ]
     try:
+        gpu_info = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+                                  capture_output=True, text=True).stdout.strip()
+        print("GPU:", gpu_info or "không đọc được")
+        smoke_started = time.time()
         run(smoke_command)
+        print(f"Smoke 2 bước (gồm nạp model): {time.time() - smoke_started:.0f} giây")
     except Exception as error:
         raise RuntimeError(f"Smoke warm-start lỗi; giữ output để kiểm tra tại {smoke_dir}") from error
     if not (smoke_dir / "final/adapter_config.json").is_file():
