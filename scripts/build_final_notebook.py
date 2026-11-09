@@ -35,7 +35,8 @@ Thứ tự khuyến nghị (mỗi bước là một lần chạy riêng, đọc 
 | 1 | `PHASES = {"asr"}` | Đo dev: ASR medium/large, có/không `--asr-correct` (không train) | ~1–1.5 giờ |
 | 2 | `PHASES = {"train_noise","eval","public"}` | Train 1 epoch có ASR-noise từ 1524 rồi đo | ~7–8 giờ |
 | 3 | `PHASES = {"train_final","eval","public"}` | Train trên train+dev+holdout (đo dev sẽ lạc quan) | ~9–10 giờ |
-| 4 | `PHASES = {"latency"}` | Đo độ trễ để chắc ≤30 s/mẫu trên A30 trước khi đóng Docker | ~20 phút |
+| 4 | `PHASES = {"latency"}` | Đo độ trễ để chắc ≤30 s/mẫu trước khi đóng Docker | ~20 phút |
+| 0 | `PHASES = {"zs"}` | **Nên chạy trước hết.** Giữ lại 8 app khỏi train, train từ đầu 2 epoch rồi đo `dev_id` (app đã thấy) so với `dev_zs` (app chưa thấy). Public test có 11 app lạ; khoảng cách hai số này cho biết có phải mô hình nhớ schema không | ~10–11 giờ |
 
 **Điểm cần nhớ**: dev chỉ 154 mẫu (sai số ≈ ±4 điểm); eval loss KHÔNG dự đoán điểm; công thức điểm của BTC chưa có, nên quyết định cuối dựa vào điểm public (5 lượt/ngày). Hạn Docker 16/11 23:59 (GMT+7) — cần Dockerfile từ tài liệu BTC.
 """
@@ -62,7 +63,7 @@ CODE_COMMIT = "__CODE_COMMIT__"
 RESUME_PACK = ""
 
 # ---------------- chọn việc cần làm ở lần chạy này ----------------
-PHASES = {"asr"}   # tập con của: "asr", "train_noise", "train_final", "eval", "public", "latency"
+PHASES = {"zs"}   # tập con của: "zs", "asr", "train_noise", "train_final", "eval", "public", "latency"
 
 # ASR: các biến thể đem so trên dev (adapter 1524). Tên: (model, asr_correct)
 ASR_VARIANTS = [("medium", False), ("medium", True), ("large", False), ("large", True)]
@@ -96,7 +97,13 @@ SCHEMA_PERMUTATIONS = 1
 LR_ORIG = 5e-5
 MAX_EPOCHS = 30
 
-KNOWN = {"asr", "train_noise", "train_final", "eval", "public", "latency"}
+# Thí nghiệm zero-shot: giữ lại app khỏi train để đo khả năng dùng tool/app CHƯA THẤY (public test có 11 app lạ)
+ZS_HELD_OUT = ["bike_rental", "door_lock", "home_automation", "home_security", "learning", "news", "robot_vacuum", "video_meeting"]
+ZS_LR = 1e-4              # train TỪ ĐẦU (không warm-start) nên dùng LR cao hơn warm-start; giả thuyết
+ZS_EPOCHS = 2
+ZS_SEED = 2030
+
+KNOWN = {"asr", "train_noise", "train_final", "eval", "public", "latency", "zs"}
 assert PHASES <= KNOWN, PHASES - KNOWN
 assert set(PUBLIC_STAGES) <= {"baseline", "noise", "final"}
 assert FINAL_INIT in {"noise", "baseline"}
@@ -364,6 +371,65 @@ else:
     print("Bỏ latency.")
 '''
 
+CELL_ZS = r'''ZS_DIR = RUN_DIR / "zero_shot"
+ZS_DATA = PROJECT_DIR / "data/processed/zero_shot"
+ZS_OUT = ZS_DIR / "train_run"
+if "zs" in PHASES:
+    if not (ZS_DATA / "manifest.json").is_file():
+        run([sys.executable, "training/prepare_zero_shot_split.py", "--data-root", DATA_ROOT, "--output-dir", ZS_DATA,
+             "--seed", SEED, "--held-out-apps", *ZS_HELD_OUT])
+    print(json.dumps(json.loads((ZS_DATA / "manifest.json").read_text())["samples"], ensure_ascii=False))
+    ZS_TRAIN_AUG = ZS_DIR / "train_schema_augmented.jsonl"
+    ZS_DIR.mkdir(parents=True, exist_ok=True)
+    if not ZS_TRAIN_AUG.is_file():
+        with (ZS_DATA / "train.jsonl").open(encoding="utf-8") as src, ZS_TRAIN_AUG.open("w", encoding="utf-8") as dst:
+            for line in src:
+                row = json.loads(line)
+                dst.write(json.dumps(row, ensure_ascii=False) + "\n")
+                payload = json.loads(row["messages"][1]["content"])
+                tools = payload.get("available_tools", [])
+                if len(tools) > 1:
+                    rng = random.Random(int(hashlib.sha256(f"{SEED}:{row['sample_id']}".encode()).hexdigest()[:16], 16))
+                    shuffled = list(tools); rng.shuffle(shuffled)
+                    if shuffled == tools:
+                        shuffled = shuffled[1:] + shuffled[:1]
+                    payload["available_tools"] = shuffled
+                    aug = dict(row); aug["messages"] = [dict(m) for m in row["messages"]]
+                    aug["messages"][1]["content"] = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+                    dst.write(json.dumps(aug, ensure_ascii=False) + "\n")
+    zs_cmd = [sys.executable, "training/train_lora.py", "--train-jsonl", ZS_TRAIN_AUG, "--dev-jsonl", ZS_DATA / "dev_id.jsonl",
+              "--model-path", MODEL_PATH, "--gradient-accumulation-steps", GRAD_ACCUMULATION,
+              "--lora-rank", LORA_RANK, "--lora-alpha", LORA_ALPHA, "--lora-dropout", LORA_DROPOUT,
+              "--evals-per-epoch", EVALS_PER_EPOCH, "--seed", ZS_SEED, "--max-sequence-length", selected_context,
+              "--learning-rate", ZS_LR, "--epochs", ZS_EPOCHS, "--disable-early-stopping", "--no-load-best",
+              "--save-total-limit", KEEP_CKPTS, "--output-dir", ZS_OUT]
+    if (ZS_OUT / "final/adapter_config.json").is_file():
+        print("zero_shot/train_run/final đã có; bỏ qua train.")
+    else:
+        interrupted = latest_checkpoint(ZS_OUT) if ZS_OUT.exists() else None
+        if interrupted is None and ZS_OUT.exists() and list(ZS_OUT.glob("checkpoint-*")):
+            raise FileNotFoundError(f"Checkpoint dở ở {ZS_OUT} nhưng không đủ file để resume; giữ nguyên để kiểm tra.")
+        run([*zs_cmd, *(["--resume-from-checkpoint", interrupted] if interrupted else [])])
+    ZS_ADAPTER = ZS_OUT / "final"
+    ZS_REPORTS = {}
+    for name in ("dev_id", "dev_zs"):
+        report = RUN_DIR / f"dev_zs_{name}.json"
+        if not (report.is_file() and report.stat().st_mtime > (ZS_ADAPTER / "adapter_model.safetensors").stat().st_mtime):
+            run([sys.executable, "training/evaluate_dev.py", "--data-root", DATA_ROOT, "--adapter", ZS_ADAPTER,
+                 "--sft-dev", ZS_DATA / f"{name}.jsonl", "--limit-samples", 0, "--report", report,
+                 "--per-sample-log", RUN_DIR / f"dev_zs_{name}_samples.jsonl",
+                 "--asr-model", ASR_PATHS["medium"], "--asr-cache", ASR_CACHES["medium"]])
+        ZS_REPORTS[name] = json.loads(report.read_text())
+    print("dev_id (app đã thấy)  :", fmt(ZS_REPORTS["dev_id"]))
+    print("dev_zs (app CHƯA thấy):", fmt(ZS_REPORTS["dev_zs"]))
+    gap = ZS_REPORTS["dev_id"]["changed_app_state_match_rate"] - ZS_REPORTS["dev_zs"]["changed_app_state_match_rate"]
+    print(f"\nKhoảng cách tổng quát hoá (state-match): {gap:+.3f}")
+    print("Lớn (>~0.15): mô hình nhớ schema -> cần augmentation đổi tên tool/tham số và dữ liệu tổng hợp cho app lạ.")
+    print("Nhỏ: nguyên nhân điểm public thấp nằm chỗ khác (ASR, ngày giờ, phân phối yêu cầu).")
+else:
+    print("Bỏ zs.")
+'''
+
 CELL_PACK = r'''import tarfile
 
 stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -380,6 +446,11 @@ for stage in ("noise", "final"):
         include.append(newest)
     if (folder / "preflight.json").is_file():
         include.append(folder / "preflight.json")
+zs_final = RUN_DIR / "zero_shot/train_run/final"
+if zs_final.exists():
+    include.append(zs_final)
+if (PROJECT_DIR / "data/processed/zero_shot/manifest.json").is_file():
+    include.append(PROJECT_DIR / "data/processed/zero_shot/manifest.json")
 for stage in ("noise", "final"):
     d = RUN_DIR / f"data_{stage}" / "manifest.json"
     if d.is_file():
@@ -448,7 +519,9 @@ def main() -> None:
         code(CELL_PUBLIC),
         md("## 8. Đo độ trễ"),
         code(CELL_LATENCY),
-        md("## 9. Đóng gói kết quả (luôn chạy)"),
+        md("## 9. Thí nghiệm zero-shot (app chưa thấy)"),
+        code(CELL_ZS),
+        md("## 10. Đóng gói kết quả (luôn chạy)"),
         code(CELL_PACK),
         md(MD_DONE),
     ]
