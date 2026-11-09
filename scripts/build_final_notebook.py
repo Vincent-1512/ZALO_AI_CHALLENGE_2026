@@ -36,7 +36,8 @@ Thứ tự khuyến nghị (mỗi bước là một lần chạy riêng, đọc 
 | 2 | `PHASES = {"train_noise","eval","public"}` | Train 1 epoch có ASR-noise từ 1524 rồi đo | ~7–8 giờ |
 | 3 | `PHASES = {"train_final","eval","public"}` | Train trên train+dev+holdout (đo dev sẽ lạc quan) | ~9–10 giờ |
 | 4 | `PHASES = {"latency"}` | Đo độ trễ để chắc ≤30 s/mẫu trước khi đóng Docker | ~20 phút |
-| 0 | `PHASES = {"zs"}` | **Nên chạy trước hết.** Giữ lại 8 app khỏi train, train từ đầu 2 epoch rồi đo `dev_id` (app đã thấy) so với `dev_zs` (app chưa thấy). Public test có 11 app lạ; khoảng cách hai số này cho biết có phải mô hình nhớ schema không | ~10–11 giờ |
+| 00 | `PHASES = {"oracle"}` | **Chạy trước hết (~20–30 phút).** Đo dev với transcript ĐÚNG thay cho ASR, để tách lỗi do ASR khỏi lỗi do mô hình/policy. Báo cáo in điểm theo công thức chính thức | ~0.5 giờ |
+| 0 | `PHASES = {"zs"}` | (Ưu tiên thấp hơn sau khi có điểm chính thức trên dev.) Giữ lại 8 app khỏi train, train từ đầu 2 epoch rồi đo `dev_id` (app đã thấy) so với `dev_zs` (app chưa thấy). Public test có 11 app lạ; khoảng cách hai số này cho biết có phải mô hình nhớ schema không | ~10–11 giờ |
 
 **Điểm cần nhớ**: dev chỉ 154 mẫu (sai số ≈ ±4 điểm); eval loss KHÔNG dự đoán điểm; công thức điểm của BTC chưa có, nên quyết định cuối dựa vào điểm public (5 lượt/ngày). Hạn Docker 16/11 23:59 (GMT+7) — cần Dockerfile từ tài liệu BTC.
 """
@@ -63,7 +64,7 @@ CODE_COMMIT = "__CODE_COMMIT__"
 RESUME_PACK = ""
 
 # ---------------- chọn việc cần làm ở lần chạy này ----------------
-PHASES = {"zs"}   # tập con của: "zs", "asr", "train_noise", "train_final", "eval", "public", "latency"
+PHASES = {"oracle"}   # tập con của: "oracle", "zs", "asr", "train_noise", "train_final", "eval", "public", "latency"
 
 # ASR: các biến thể đem so trên dev (adapter 1524). Tên: (model, asr_correct)
 ASR_VARIANTS = [("medium", False), ("medium", True), ("large", False), ("large", True)]
@@ -103,7 +104,7 @@ ZS_LR = 1e-4              # train TỪ ĐẦU (không warm-start) nên dùng LR 
 ZS_EPOCHS = 2
 ZS_SEED = 2030
 
-KNOWN = {"asr", "train_noise", "train_final", "eval", "public", "latency", "zs"}
+KNOWN = {"oracle", "asr", "train_noise", "train_final", "eval", "public", "latency", "zs"}
 assert PHASES <= KNOWN, PHASES - KNOWN
 assert set(PUBLIC_STAGES) <= {"baseline", "noise", "final"}
 assert FINAL_INIT in {"noise", "baseline"}
@@ -179,17 +180,18 @@ if (ASR_PATHS["large"] / "config.json").is_file():
 
 CELL_EVAL_FN = r'''import statistics
 
-def dev_eval(tag, adapter, asr="medium", correct=False):
+def dev_eval(tag, adapter, asr="medium", correct=False, oracle=False):
     report = RUN_DIR / f"dev_{tag}.json"
     weights = Path(adapter) / "adapter_model.safetensors"
-    if report.is_file() and report.stat().st_mtime > weights.stat().st_mtime:
+    if (report.is_file() and report.stat().st_mtime > weights.stat().st_mtime
+            and "official_score_100" in json.loads(report.read_text())):
         print(f"Dùng lại báo cáo dev: {report.name}")
     else:
         run([sys.executable, "training/evaluate_dev.py",
              "--data-root", DATA_ROOT, "--adapter", adapter, "--limit-samples", 0,
              "--report", report, "--per-sample-log", RUN_DIR / f"dev_{tag}_samples.jsonl",
              "--asr-model", ASR_PATHS[asr], "--asr-cache", ASR_CACHES[asr],
-             *(["--asr-correct"] if correct else [])])
+             *(["--asr-correct"] if correct else []), *(["--oracle-transcript"] if oracle else [])])
     return json.loads(report.read_text())
 
 def latency_summary(tag):
@@ -199,7 +201,8 @@ def latency_summary(tag):
             "max": times[-1], "over_limit": sum(t > LATENCY_LIMIT_S for t in times), "n": len(times)}
 
 def fmt(r):
-    return (f"state_match={r['changed_app_state_match_rate']:.4f} ({r['state_match_count']}/{r['samples']}) "
+    official = f"ĐIỂM_CHÍNH_THỨC≈{r['official_score_100']:.2f} hash_đủ={r['full_hash_match_rate']:.3f} " if "official_score_100" in r else ""
+    return (f"{official}state_match={r['changed_app_state_match_rate']:.4f} ({r['state_match_count']}/{r['samples']}) "
             f"call_F1_diag={r['tool_call_f1_diagnostic']:.4f} empty_pred={r['empty_prediction_samples']} end={r['end_reason_counts']}")
 
 def variant_name(asr, correct):
@@ -371,6 +374,17 @@ else:
     print("Bỏ latency.")
 '''
 
+CELL_ORACLE = r'''if "oracle" in PHASES:
+    real = dev_eval("ckpt1524", BASE_CKPT, "medium", False)
+    oracle = dev_eval("ckpt1524_oracle", BASE_CKPT, "medium", False, oracle=True)
+    print("ASR thật   :", fmt(real))
+    print("Gold text  :", fmt(oracle))
+    d = oracle["official_score_100"] - real["official_score_100"]
+    print(f"\\nChênh điểm chính thức (gold text - ASR thật) = {d:+.2f}")
+    print("Chênh lớn (>~15): ASR là nút cổ chai -> ưu tiên ASR large/sửa lỗi/train với nhiễu ASR.")
+    print("Chênh nhỏ: mô hình/policy (đa bước, điều kiện, tham số) là nút cổ chai -> ưu tiên dữ liệu và cách train.")
+'''
+
 CELL_ZS = r'''ZS_DIR = RUN_DIR / "zero_shot"
 ZS_DATA = PROJECT_DIR / "data/processed/zero_shot"
 ZS_OUT = ZS_DIR / "train_run"
@@ -519,6 +533,8 @@ def main() -> None:
         code(CELL_PUBLIC),
         md("## 8. Đo độ trễ"),
         code(CELL_LATENCY),
+        md("## 8b. Chẩn đoán: ASR thật vs transcript đúng (gold)"),
+        code(CELL_ORACLE),
         md("## 9. Thí nghiệm zero-shot (app chưa thấy)"),
         code(CELL_ZS),
         md("## 10. Đóng gói kết quả (luôn chạy)"),
