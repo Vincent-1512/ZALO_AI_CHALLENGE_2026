@@ -29,7 +29,7 @@ MD_TITLE = """# LifeMate — notebook FINAL (từ checkpoint 1524 đến lúc n�
 |---|---|---|---|
 | 1 | `{"oracle"}` | Đo dev với transcript đúng so với ASR thật → biết lỗi nằm ở ASR hay ở mô hình | ~30 phút |
 | 2 | `{"asr"}` | So sánh ASR medium/large, có/không sửa lỗi theo ngữ cảnh | ~1–1.5 giờ |
-| 3 | `{"train_noise","eval","public"}` | Train 1 epoch có nhiễu ASR từ 1524, đo dev, tạo submission | ~7–8 giờ |
+| 3 | `{"train_noise","eval","public"}` | Train 1 epoch từ 1524 với transcript của ASR mới (large_ft + large gốc để có nhiễu), đo dev, tạo submission | ~7–8 giờ |
 | 4 | `{"train_final","eval","public"}` | Train trên train+dev+holdout (dev sau đó là số lạc quan) | ~9–10 giờ |
 | 5 | `{"latency"}` | Đo độ trễ mỗi mẫu trước khi đóng Docker | ~20 phút |
 | tuỳ chọn | `{"zs"}` | Giữ lại 8 app khỏi train để đo khả năng dùng tool chưa thấy | ~10 giờ |
@@ -62,13 +62,15 @@ CODE_COMMIT = "__CODE_COMMIT__"
 RESUME_PACK = ""
 
 # ---------------- chọn việc cần làm ở lần chạy này ----------------
-PHASES = {"oracle"}   # tập con của: "oracle", "zs", "asr", "train_noise", "train_final", "eval", "public", "latency"
+PHASES = {"train_noise", "eval", "public"}   # tập con của: "oracle", "zs", "asr", "train_noise", "train_final", "eval", "public", "latency"
 
 # ASR: các biến thể đem so trên dev (adapter 1524). Tên: (model, asr_correct)
-ASR_VARIANTS = [("medium", False), ("medium", True), ("large", False), ("large", True)]
-ASR_CHOICE = "auto"       # "auto" = biến thể dev state-match cao nhất NẾU hơn medium thường >= ASR_MIN_GAIN; hoặc ghi tay "medium"/"medium+correct"/"large"/"large+correct"
+ASR_VARIANTS = [("large_ft", False)]   # chỉ dùng khi PHASES có "asr". Đã đo: medium 30.96, large 33.89, large_ft 54.62 (dev); +correct làm TỤT điểm -> bỏ
+ASR_CHOICE = "large_ft"   # ASR dùng cho mọi bước. "auto" = chọn theo dev; hoặc "medium"/"large"/"large_ft" (+ hậu tố "+correct" nếu muốn)
 ASR_MIN_GAIN = 0.02       # dev nhỏ (154 mẫu) -> không đổi ASR vì chênh lệch nhỏ hơn ngưỡng này
 ASR_LARGE_REPO = "vinai/PhoWhisper-large"   # ~1.55B tham số; tổng hệ thống ~5.6B < 6B, LLM 4.0B < 5B
+ASR_FT_REPO = "vincent1512/lifemate-phowhisper-large-ft"   # PhoWhisper-large đã fine-tune trên audio train (dev WER 0.2469 -> 0.0921); repo private -> cần HF token (đọc)
+ALT_NOISE_FRACTION = 0.5  # tỉ lệ dòng "có ASR" lấy transcript từ PhoWhisper-large GỐC (nhiễu ~25% WER) thay vì large_ft. Lý do: large_ft đã học thuộc audio train nên transcript train gần như sạch, còn test sẽ nhiễu hơn. 0 = tắt. Đây là giả thuyết, chưa đo.
 
 # Train
 NOISE_PROB = 0.5          # xác suất dùng transcript ASR (thay vì text gốc) khi dựng dữ liệu train
@@ -107,6 +109,7 @@ assert PHASES <= KNOWN, PHASES - KNOWN
 assert set(PUBLIC_STAGES) <= {"baseline", "noise", "final"}
 assert FINAL_INIT in {"noise", "baseline"}
 assert 0 < NOISE_PROB <= 1
+assert 0 <= ALT_NOISE_FRACTION <= 1
 print("PHASES =", sorted(PHASES))
 '''
 
@@ -164,16 +167,43 @@ else:
     print("RESUME_PACK rỗng: lần chạy đầu (hoặc cùng máy, không mất đĩa).")
 '''
 
-CELL_ASR_SETUP = r'''ASR_PATHS = {"medium": PROJECT_DIR / "models/PhoWhisper-medium", "large": PROJECT_DIR / "models/PhoWhisper-large"}
-ASR_CACHES = {"medium": ASR_CACHE, "large": RUN_DIR / "asr_cache_large.json"}   # mỗi model một cache (metadata khác nhau)
+CELL_ASR_SETUP = r'''ASR_PATHS = {"medium": PROJECT_DIR / "models/PhoWhisper-medium", "large": PROJECT_DIR / "models/PhoWhisper-large",
+             "large_ft": PROJECT_DIR / "models/PhoWhisper-large-ft"}
+ASR_CACHES = {"medium": ASR_CACHE, "large": RUN_DIR / "asr_cache_large.json",
+              "large_ft": RUN_DIR / "asr_cache_large_ft.json"}   # mỗi model một cache (metadata khác nhau)
 
-need_large = ("asr" in PHASES and any(m == "large" for m, _ in ASR_VARIANTS)) or ASR_CHOICE.startswith("large")
-if need_large and not (ASR_PATHS["large"] / "config.json").is_file():
+def fetch_model(repo, dest):
+    if (dest / "config.json").is_file():
+        return
     from huggingface_hub import snapshot_download
-    snapshot_download(repo_id=ASR_LARGE_REPO, local_dir=str(ASR_PATHS["large"]))
-if (ASR_PATHS["large"] / "config.json").is_file():
-    n_params = sum(p.stat().st_size for p in ASR_PATHS["large"].glob("*.safetensors")) / 4 / 1e9  # ước lượng fp32 -> tỉ tham số
-    print(f"PhoWhisper-large tải xong (ước tính ~{n_params:.2f} B tham số nếu fp32; kiểm số thật trong config trước khi nộp).")
+    token = os.environ.get("HF_TOKEN") or None
+    try:
+        snapshot_download(repo_id=repo, local_dir=str(dest), token=token)
+    except Exception as exc:
+        if token is not None:
+            raise
+        from getpass import getpass
+        print(f"{repo}: tải không được ({type(exc).__name__}); repo private? Nhập token HuggingFace loại READ (đừng dán vào chat):")
+        snapshot_download(repo_id=repo, local_dir=str(dest), token=getpass("HF token: "))
+
+def count_params(path):
+    import math
+    from safetensors import safe_open
+    total = 0
+    for f in Path(path).glob("*.safetensors"):
+        with safe_open(str(f), "pt") as sf:
+            total += sum(math.prod(sf.get_slice(k).get_shape()) for k in sf.keys())
+    return total
+
+wanted = {m for m, _ in ASR_VARIANTS} if "asr" in PHASES else set()
+if ASR_CHOICE != "auto":
+    wanted.add(ASR_CHOICE.partition("+")[0])
+if PHASES & {"train_noise", "train_final"} and ALT_NOISE_FRACTION > 0:
+    wanted.add("large")
+for name, repo in (("large_ft", ASR_FT_REPO), ("large", ASR_LARGE_REPO)):
+    if name in wanted:
+        fetch_model(repo, ASR_PATHS[name])
+        print(f"PhoWhisper {name}: {count_params(ASR_PATHS[name]) / 1e9:.3f} B tham số (đếm từ file safetensors).")
 '''
 
 CELL_EVAL_FN = r'''import statistics
@@ -244,18 +274,22 @@ SEL_ASR, SEL_CORRECT, SEL_NAME = pick_asr()
 print("ASR dùng cho các bước sau:", SEL_NAME)
 '''
 
-CELL_BASELINE = r'''BASE_REPORT = dev_eval("ckpt1524", BASE_CKPT, "medium", False) if PHASES & {"eval", "public", "train_noise", "train_final", "latency"} else None
-SEL_TAG_SUFFIX = SEL_NAME.replace("+", "_")
-print("Baseline 1524 (medium):", fmt(BASE_REPORT) if BASE_REPORT else "không đo")
+CELL_BASELINE = r'''SEL_TAG_SUFFIX = SEL_NAME.replace("+", "_")
+BASE_TAG = "ckpt1524" if SEL_NAME == "medium" else f"ckpt1524_{SEL_TAG_SUFFIX}"
+BASE_REPORT = dev_eval(BASE_TAG, BASE_CKPT, SEL_ASR, SEL_CORRECT) if PHASES & {"eval", "public", "train_noise", "train_final", "latency"} else None
+print(f"Baseline 1524 + ASR {SEL_NAME}:", fmt(BASE_REPORT) if BASE_REPORT else "không đo")
 '''
 
 CELL_TRAIN_FN = r'''def build_stage_data(stage):
-    out = RUN_DIR / f"data_{stage}"
+    out = RUN_DIR / f"data_{stage}_{SEL_TAG_SUFFIX}_alt{int(ALT_NOISE_FRACTION * 100)}"
     target = out / "train.jsonl"
     if not target.is_file():
         cmd = [sys.executable, "scripts/build_asr_train_data.py", "--data-root", DATA_ROOT, "--output-dir", out,
                "--asr-model", ASR_PATHS[SEL_ASR], "--asr-cache", ASR_CACHES[SEL_ASR],
                "--asr-probability", NOISE_PROB, "--seed", SEED]
+        if ALT_NOISE_FRACTION > 0 and SEL_ASR != "large":
+            cmd += ["--alt-asr-model", ASR_PATHS["large"], "--alt-asr-cache", ASR_CACHES["large"],
+                    "--alt-fraction", ALT_NOISE_FRACTION]
         if stage == "final":
             cmd.append("--include-dev-holdout")
         run(cmd)
@@ -264,7 +298,7 @@ CELL_TRAIN_FN = r'''def build_stage_data(stage):
 def train_stage(stage, init_adapter):
     out = RUN_DIR / f"stage_{stage}"
     if (out / "final/adapter_config.json").is_file():
-        print(f"stage_{stage}/final đã có; bỏ qua train.")
+        print(f"stage_{stage}/final đã có; bỏ qua train (xoá thư mục này nếu muốn train lại với ASR mới).")
         return out / "final"
     data = build_stage_data(stage)
     rows = sum(1 for _ in data.open(encoding="utf-8"))
