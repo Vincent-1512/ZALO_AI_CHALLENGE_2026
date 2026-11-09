@@ -90,6 +90,8 @@ def main() -> None:
     parser.add_argument("--asr-probability", type=float, default=0.5)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--no-schema-permutation", action="store_true")
+    parser.add_argument("--include-dev-holdout", action="store_true",
+                        help="Final-fit mode: train on train+dev+holdout rows (dev/holdout metrics become optimistic)")
     args = parser.parse_args()
     if not 0 <= args.asr_probability <= 1:
         parser.error("--asr-probability must be between 0 and 1")
@@ -98,10 +100,16 @@ def main() -> None:
     catalog = json.loads((split.split_dir / "train_tools_catalog.json").read_text(encoding="utf-8"))
     rows = list(read_jsonl(split.split_dir / "train.jsonl"))
     partitions = split_rows(rows, args.seed, (0.8, 0.1, 0.1))
-    asr = SpeechRecognizer(args.asr_model)
-    asr_by_sample = _transcribe_rows(partitions["train"], split.split_dir, asr)
+    fit_rows = list(partitions["train"])
+    if args.include_dev_holdout:
+        fit_rows += list(partitions["dev"]) + list(partitions["holdout"])
+    if args.asr_probability > 0:
+        asr = SpeechRecognizer(args.asr_model)
+        asr_by_sample = _transcribe_rows(fit_rows, split.split_dir, asr)
+    else:
+        asr_by_sample = {}
     train_records, info = build_train_records(
-        partitions["train"], catalog, asr_by_sample, args.asr_probability,
+        fit_rows, catalog, asr_by_sample, args.asr_probability,
         args.seed, not args.no_schema_permutation,
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -109,6 +117,7 @@ def main() -> None:
     manifest = {"seed": args.seed, "asr_probability": args.asr_probability,
                 "train": info, "dev_samples": len(partitions["dev"]),
                 "holdout_samples": len(partitions["holdout"]),
+                "include_dev_holdout": args.include_dev_holdout,
                 "dev_and_holdout_use_gold_transcripts": True,
                 "schema_permutation_note": "Each eligible trajectory row gets one same-target copy, matching notebook order permutation."}
     (args.output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
