@@ -163,6 +163,7 @@ def _action_for_step(agent, env, sample, transcript, catalog, transcripts, resul
 
 def _run_actions(env, sample, transcript, catalog, transcripts, prior_results, agent, max_steps,
                  profile, num_samples=1, temperature=None):
+    seen_calls = set()
     for _ in range(max_steps):
         action = _action_for_step(
             agent, env, sample, transcript, catalog, transcripts, prior_results, profile,
@@ -170,6 +171,13 @@ def _run_actions(env, sample, transcript, catalog, transcripts, prior_results, a
         )
         if action is None:
             return
+        # Identical repeated calls are a loop symptom (gold has them in ~0.1% of train samples, predictions ~2.4%).
+        call_key = _normalized_action(action)
+        if call_key in seen_calls:
+            if profile is not None:
+                profile["end_reason"] = "repeat_call"
+            return
+        seen_calls.add(call_key)
         started = time.perf_counter()
         result = env.call(action["name"], action["arguments"])
         if profile is not None:
