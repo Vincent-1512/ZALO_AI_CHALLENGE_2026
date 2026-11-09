@@ -514,7 +514,8 @@ def main() -> None:
                   "# --- đồng bộ code mới từ GitHub ---\n" + CELL_SYNC,
                   "# --- khôi phục kết quả lần trước (nếu có) ---\n" + CELL_RESUME_PACK)),
         code(join("# --- đường dẫn ---\n" + reuse(nb, 9, "def latest_checkpoint"),
-                  "# --- kiểm tra GPU / đĩa / dữ liệu ---\n" + reuse(nb, 10, "nvidia-smi"),
+                  "# --- kiểm tra GPU / đĩa / dữ liệu ---\n" + reuse(nb, 10, "nvidia-smi").replace(
+                      "if free_gib < 18:", 'if free_gib < (18 if PHASES & {"train_noise", "train_final", "zs"} else 9):'),
                   "# --- cài thư viện, tải model, tạo dữ liệu SFT ---\n" + reuse(nb, 12, "prepare_sft.py"),
                   "# --- augmentation thứ tự tool ---\n" + reuse(nb, 13, "AUG_TRAIN_JSONL"),
                   "# --- preflight: độ dài ngữ cảnh + kiểm hash dữ liệu ---\n" + reuse(nb, 15, "preflight"))),
