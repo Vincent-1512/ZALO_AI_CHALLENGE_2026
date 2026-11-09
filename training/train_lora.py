@@ -107,6 +107,8 @@ def parse_args():
                         help="How many checkpoints Trainer keeps (default 3, unchanged)")
     parser.add_argument("--no-load-best", action="store_true",
                         help="Keep the last-step weights as final instead of reloading the lowest-eval-loss checkpoint")
+    parser.add_argument("--no-gradient-checkpointing", action="store_true",
+                        help="Faster but needs far more VRAM (about 80 GB for 8K tokens); default keeps checkpointing on")
     parser.add_argument("--save-steps", type=int, default=0,
                         help="Optional maximum checkpoint interval; default derives it from evals per epoch")
     parser.add_argument("--longest-first", action="store_true", help="Smoke: exercise longest training record first")
@@ -206,7 +208,7 @@ def load_quantized_model(model_path: str, compute_dtype, args):
         attn_implementation="sdpa",
     )
     base = prepare_model_for_kbit_training(
-        base, use_gradient_checkpointing=True,
+        base, use_gradient_checkpointing=not args.no_gradient_checkpointing,
         gradient_checkpointing_kwargs={"use_reentrant": False},
     )
     base.config.use_cache = False
@@ -254,7 +256,7 @@ def make_training_args(args, compute_dtype, torch, eval_steps):
         load_best_model_at_end=not args.no_load_best,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
-        gradient_checkpointing=True,
+        gradient_checkpointing=not args.no_gradient_checkpointing,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         bf16=compute_dtype == torch.bfloat16,
         fp16=compute_dtype == torch.float16,
