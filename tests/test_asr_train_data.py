@@ -39,6 +39,17 @@ class AsrNoisyDataTests(unittest.TestCase):
         self.assertEqual(request["request"], "Tắt đèn")
         self.assertEqual(info["schema_permutations"], True)
 
+    def test_alt_asr_used_for_selected_fraction(self):
+        alt = {"train_1": {"a.wav": "tắc đèn", "old.wav": "mờ cửa"}}
+        records, info = build_train_records([self.row], self.catalog, self.asr, 1.0, 7, False, alt, 1.0)
+        self.assertEqual(json.loads(records[0]["messages"][1]["content"])["request"], "tắc đèn")
+        self.assertEqual(info["alt_asr_samples"], 1)
+        records, info = build_train_records([self.row], self.catalog, self.asr, 1.0, 7, False, alt, 0.0)
+        self.assertEqual(json.loads(records[0]["messages"][1]["content"])["request"], "tắt dèn")
+        self.assertEqual(info["alt_asr_samples"], 0)
+        with self.assertRaises(ValueError):
+            build_train_records([self.row], self.catalog, self.asr, 1.0, 7, False, alt, 1.5)
+
     def test_probability_out_of_range_is_rejected(self):
         with self.assertRaises(ValueError):
             build_train_records([self.row], self.catalog, self.asr, 1.1)
