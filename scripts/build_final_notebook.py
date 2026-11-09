@@ -21,25 +21,23 @@ def reuse(nb: dict, index: int, must_contain: str) -> str:
     return text
 
 
-MD_TITLE = """# LifeMate Vast — notebook FINAL (từ checkpoint 1524 đến lúc nộp bài)
+MD_TITLE = """# LifeMate — notebook FINAL (từ checkpoint 1524 đến lúc nộp)
 
-Một notebook duy nhất, **chạy lại nhiều lần được** (mỗi bước kiểm tra kết quả đã có rồi mới làm). Mỗi lần thuê máy:
+**Cách dùng (mỗi lần thuê máy):** sửa dòng `PHASES` ở mục A → *Run All* → tải gói `lifemate-final-*.tar.gz` về trước khi huỷ máy. Lần sau upload gói đó lên `/workspace` và điền tên vào `RESUME_PACK`. Bước nào đã có kết quả sẽ tự bỏ qua, nên chạy lại an toàn.
 
-1. Sửa **MỘT** ô cấu hình (ô 2) → *Run All*. Bước nào xong rồi sẽ được bỏ qua nhờ file trong `lifemate_runs/`.
-2. Cuối notebook luôn đóng gói `lifemate-final-*.tar.gz` → **tải về trước khi huỷ máy**. Lần sau upload lại gói đó vào `/workspace` (đặt `RESUME_PACK`).
-
-Thứ tự khuyến nghị (mỗi bước là một lần chạy riêng, đọc kết quả rồi mới sang bước sau):
-
-| Lần | Cấu hình | Mục đích | Thời gian ước tính (RTX 3090) |
+| Thứ tự | `PHASES` | Làm gì | Thời gian (RTX 3090) |
 |---|---|---|---|
-| 1 | `PHASES = {"asr"}` | Đo dev: ASR medium/large, có/không `--asr-correct` (không train) | ~1–1.5 giờ |
-| 2 | `PHASES = {"train_noise","eval","public"}` | Train 1 epoch có ASR-noise từ 1524 rồi đo | ~7–8 giờ |
-| 3 | `PHASES = {"train_final","eval","public"}` | Train trên train+dev+holdout (đo dev sẽ lạc quan) | ~9–10 giờ |
-| 4 | `PHASES = {"latency"}` | Đo độ trễ để chắc ≤30 s/mẫu trước khi đóng Docker | ~20 phút |
-| 00 | `PHASES = {"oracle"}` | **Chạy trước hết (~20–30 phút).** Đo dev với transcript ĐÚNG thay cho ASR, để tách lỗi do ASR khỏi lỗi do mô hình/policy. Báo cáo in điểm theo công thức chính thức | ~0.5 giờ |
-| 0 | `PHASES = {"zs"}` | (Ưu tiên thấp hơn sau khi có điểm chính thức trên dev.) Giữ lại 8 app khỏi train, train từ đầu 2 epoch rồi đo `dev_id` (app đã thấy) so với `dev_zs` (app chưa thấy). Public test có 11 app lạ; khoảng cách hai số này cho biết có phải mô hình nhớ schema không | ~10–11 giờ |
+| 1 | `{"oracle"}` | Đo dev với transcript đúng so với ASR thật → biết lỗi nằm ở ASR hay ở mô hình | ~30 phút |
+| 2 | `{"asr"}` | So sánh ASR medium/large, có/không sửa lỗi theo ngữ cảnh | ~1–1.5 giờ |
+| 3 | `{"train_noise","eval","public"}` | Train 1 epoch có nhiễu ASR từ 1524, đo dev, tạo submission | ~7–8 giờ |
+| 4 | `{"train_final","eval","public"}` | Train trên train+dev+holdout (dev sau đó là số lạc quan) | ~9–10 giờ |
+| 5 | `{"latency"}` | Đo độ trễ mỗi mẫu trước khi đóng Docker | ~20 phút |
+| tuỳ chọn | `{"zs"}` | Giữ lại 8 app khỏi train để đo khả năng dùng tool chưa thấy | ~10 giờ |
 
-**Điểm cần nhớ**: dev chỉ 154 mẫu (sai số ≈ ±4 điểm); eval loss KHÔNG dự đoán điểm; công thức điểm của BTC chưa có, nên quyết định cuối dựa vào điểm public (5 lượt/ngày). Hạn Docker 16/11 23:59 (GMT+7) — cần Dockerfile từ tài liệu BTC.
+**Cần nhớ**
+- Điểm dev in ra (`ĐIỂM_CHÍNH_THỨC`) tính theo công thức BTC: trạng thái cuối phải khớp hash VÀ khớp call (F1). Dev chỉ 154 mẫu nên sai số khoảng ±4 điểm; eval loss không dự đoán điểm.
+- Các số là ước tính; thứ tự có thể đổi sau khi có kết quả bước 1.
+- Hạn nộp Docker: 16/11 23:59 (GMT+7). Gói Docker làm riêng, theo Docker Guide của BTC.
 """
 
 CELL_CONFIG = r'''from pathlib import Path
@@ -502,42 +500,39 @@ def main() -> None:
     if len(args.code_commit) != 40:
         raise SystemExit("--code-commit must be a full 40-char SHA")
     nb = json.loads(RESUME.read_text(encoding="utf-8"))
+    def join(*parts: str) -> str:
+        return "\n\n".join(parts)
+
     cells = [
         md(MD_TITLE),
+        md("## A. Cấu hình — chỉ sửa ô này (chủ yếu dòng `PHASES`)"),
         code(CELL_CONFIG.replace("__CODE_COMMIT__", args.code_commit)),
-        md("## 1. Tải code + dữ liệu cơ sở, nhập checkpoint 1524, đồng bộ code mới"),
+        md("## B. Chuẩn bị môi trường — không cần sửa, chỉ chạy\nTải code + dữ liệu, nhập checkpoint 1524, khôi phục kết quả lần trước, kiểm tra GPU, cài thư viện, tái tạo dữ liệu train/dev."),
         code(reuse(nb, 3, "def bootstrap_github_release")),
-        code(reuse(nb, 4, "bootstrap_github_release(")),
-        code(reuse(nb, 5, "BASE_CKPT = FULL_DIR")),
-        code(CELL_SYNC),
-        code(CELL_RESUME_PACK),
-        md("## 2. Đường dẫn, GPU, thư viện, dữ liệu"),
-        code(reuse(nb, 9, "def latest_checkpoint")),
-        code(reuse(nb, 10, "nvidia-smi")),
-        code(reuse(nb, 12, "prepare_sft.py")),
-        code(reuse(nb, 13, "AUG_TRAIN_JSONL")),
-        code(reuse(nb, 15, "preflight")),
-        md("## 3. ASR và hàm đo dev"),
-        code(CELL_ASR_SETUP),
-        code(CELL_EVAL_FN),
-        md("## 4. Đo baseline và so sánh biến thể ASR (không train)"),
-        code(CELL_ASR_PHASE),
-        code(CELL_BASELINE),
-        md("## 5. Train (mỗi giai đoạn tự resume; early stopping tắt vì eval loss không đo điểm)"),
-        code(CELL_TRAIN_FN),
-        code(CELL_TRAIN_NOISE),
-        code(CELL_TRAIN_FINAL),
-        md("## 6. Đo dev các giai đoạn"),
-        code(CELL_EVAL),
-        md("## 7. Public inference (có chốt chặn)"),
-        code(CELL_PUBLIC),
-        md("## 8. Đo độ trễ"),
-        code(CELL_LATENCY),
-        md("## 8b. Chẩn đoán: ASR thật vs transcript đúng (gold)"),
+        code(join("# --- tải bundle code+dữ liệu ---\n" + reuse(nb, 4, "bootstrap_github_release("),
+                  "# --- nhập checkpoint 1524 ---\n" + reuse(nb, 5, "BASE_CKPT = FULL_DIR"),
+                  "# --- đồng bộ code mới từ GitHub ---\n" + CELL_SYNC,
+                  "# --- khôi phục kết quả lần trước (nếu có) ---\n" + CELL_RESUME_PACK)),
+        code(join("# --- đường dẫn ---\n" + reuse(nb, 9, "def latest_checkpoint"),
+                  "# --- kiểm tra GPU / đĩa / dữ liệu ---\n" + reuse(nb, 10, "nvidia-smi"),
+                  "# --- cài thư viện, tải model, tạo dữ liệu SFT ---\n" + reuse(nb, 12, "prepare_sft.py"),
+                  "# --- augmentation thứ tự tool ---\n" + reuse(nb, 13, "AUG_TRAIN_JSONL"),
+                  "# --- preflight: độ dài ngữ cảnh + kiểm hash dữ liệu ---\n" + reuse(nb, 15, "preflight"))),
+        code(join("# --- ASR và hàm đo dev ---\n" + CELL_ASR_SETUP, CELL_EVAL_FN)),
+        md("## C. Các giai đoạn — chạy theo `PHASES`, giai đoạn không được chọn sẽ tự bỏ qua"),
+        md("### C1. Chẩn đoán `oracle`: ASR thật so với transcript đúng (~30 phút)"),
         code(CELL_ORACLE),
-        md("## 9. Thí nghiệm zero-shot (app chưa thấy)"),
+        md("### C2. So sánh ASR `asr`: medium / large, có hoặc không sửa lỗi (~1–1.5 giờ)"),
+        code(join(CELL_ASR_PHASE, CELL_BASELINE)),
+        md("### C3. Train: `train_noise` (1 epoch có nhiễu ASR) và `train_final` (train+dev+holdout)"),
+        code(join(CELL_TRAIN_FN, CELL_TRAIN_NOISE, CELL_TRAIN_FINAL)),
+        md("### C4. Đo dev (`eval`) và tạo submission public (`public`)"),
+        code(join(CELL_EVAL, CELL_PUBLIC)),
+        md("### C5. Đo độ trễ `latency` (trước khi đóng Docker)"),
+        code(CELL_LATENCY),
+        md("### C6. Thí nghiệm `zs`: giữ lại app khỏi train để đo khả năng dùng tool chưa thấy (~10 giờ, ưu tiên thấp)"),
         code(CELL_ZS),
-        md("## 10. Đóng gói kết quả (luôn chạy)"),
+        md("## D. Đóng gói kết quả — luôn chạy ở cuối"),
         code(CELL_PACK),
         md(MD_DONE),
     ]
