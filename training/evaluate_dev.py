@@ -81,6 +81,7 @@ def parse_args():
     parser.add_argument("--config", default="configs/baseline.json")
     parser.add_argument("--asr-model")
     parser.add_argument("--llm-model")
+    parser.add_argument("--rewriter-model")
     parser.add_argument("--adapter")
     parser.add_argument("--limit-samples", type=int, default=0)
     parser.add_argument("--report", default="reports/runs/dev_metrics.json")
@@ -127,16 +128,27 @@ def load_agent(config: dict, args):
         min(config["limits"]["max_context_tokens"], config["limits"]["hard_context_limit"]),
         config["limits"]["max_new_tokens"],
     )
-    return asr, agent
+    rewriter = None
+    rewriter_cfg = config.get("models", {}).get("rewriter")
+    if rewriter_cfg:
+        try:
+            from lifemate.reasoning_rewriter import ReasoningRewriter
+
+            rewriter_path = args.rewriter_model or rewriter_cfg.get("local_path")
+            rewriter = ReasoningRewriter(rewriter_path)
+        except Exception as exc:
+            print(f"Warning: could not initialize ReasoningRewriter ({exc}). Continuing without rewriter.", file=sys.stderr)
+    return asr, agent, rewriter
 
 
 def evaluate_sample(sample, runtime):
-    tool_env, split, catalog, index, state_hash, asr, agent, max_steps, enable_middleware = runtime
+    tool_env, split, catalog, index, state_hash, asr, agent, max_steps, enable_middleware, rewriter = runtime
     profile = {}
     calls, _, env = infer_one(
         sample, tool_env, split, catalog, asr, agent, max_steps,
         return_env_for_train_eval=True, profile=profile,
         enable_middleware=enable_middleware,
+        rewriter=rewriter,
     )
     expected = sample["label"]["tool_calls"]
     predicted_state = env.get_state()
@@ -217,7 +229,7 @@ def main() -> None:
     if args.limit_samples > 0:
         rows = rows[: args.limit_samples]
         print(f"Evaluating first {len(rows)} dev samples", flush=True)
-    asr, agent = load_agent(config, args)
+    asr, agent, rewriter = load_agent(config, args)
     enable_middleware = (
         False
         if args.disable_middleware
@@ -233,6 +245,7 @@ def main() -> None:
         agent,
         config["limits"]["max_tool_steps"],
         enable_middleware,
+        rewriter,
     )
     results = []
     started = time.perf_counter()

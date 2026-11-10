@@ -208,16 +208,24 @@ def infer_one(
     return_env_for_train_eval=False,
     profile=None,
     enable_middleware: bool = True,
+    rewriter=None,
 ):
     started = time.perf_counter()
     env = tool_env(split_paths.split_name, sample["id"], root=split_paths.env_root)
     if profile is not None:
-        profile.update(asr_seconds=0.0, policy_seconds=0.0, tool_seconds=0.0)
+        profile.update(asr_seconds=0.0, rewriter_seconds=0.0, policy_seconds=0.0, tool_seconds=0.0)
     try:
         phase_started = time.perf_counter()
         transcript, transcripts = _transcribe_sample(sample, split_paths.split_dir, asr)
         if profile is not None:
             profile["asr_seconds"] = time.perf_counter() - phase_started
+        if rewriter is not None:
+            rewriter_started = time.perf_counter()
+            context = sample.get("context", {})
+            history = sample.get("history", [])
+            transcript = rewriter.rewrite(transcript, context=context, history=history)
+            if profile is not None:
+                profile["rewriter_seconds"] = time.perf_counter() - rewriter_started
         _run_actions(
             env,
             sample,
@@ -238,7 +246,7 @@ def infer_one(
     return (*result, env) if return_env_for_train_eval else result
 
 
-def _load_runtime(data_path, split_name, config, asr_model, llm_model, adapter_path):
+def _load_runtime(data_path, split_name, config, asr_model, llm_model, adapter_path, rewriter_model=None):
     paths = resolve_split(data_path, split_name)
     tool_env = import_tool_env(paths.split_dir)
     catalog = load_catalog(paths.split_dir)
@@ -254,10 +262,20 @@ def _load_runtime(data_path, split_name, config, asr_model, llm_model, adapter_p
         min(config["limits"]["max_context_tokens"], config["limits"]["hard_context_limit"]),
         config["limits"]["max_new_tokens"],
     )
-    return paths, tool_env, catalog, asr, agent
+    rewriter = None
+    rewriter_cfg = config.get("models", {}).get("rewriter")
+    if rewriter_cfg:
+        try:
+            from .reasoning_rewriter import ReasoningRewriter
+
+            rewriter_path = rewriter_model or rewriter_cfg.get("local_path")
+            rewriter = ReasoningRewriter(rewriter_path)
+        except Exception as exc:
+            print(f"Warning: could not initialize ReasoningRewriter ({exc}). Continuing without rewriter.", file=sys.stderr)
+    return paths, tool_env, catalog, asr, agent, rewriter
 
 
-def _write_predictions(input_path, output_path, paths, tool_env, catalog, asr, agent, config):
+def _write_predictions(input_path, output_path, paths, tool_env, catalog, asr, agent, config, rewriter=None):
     seen = set()
     expected = sum(1 for _ in read_jsonl(input_path))
     output = Path(output_path)
@@ -273,6 +291,7 @@ def _write_predictions(input_path, output_path, paths, tool_env, catalog, asr, a
                 sample, tool_env, paths, catalog, asr, agent,
                 config["limits"]["max_tool_steps"],
                 enable_middleware=enable_middleware,
+                rewriter=rewriter,
             )
             record = {"id": sample["id"], "tool_calls": calls, "state_hash": state_hash}
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -289,6 +308,7 @@ def run_inference(
     config: dict[str, Any],
     asr_model: str | Path | None = None,
     llm_model: str | Path | None = None,
+    rewriter_model: str | Path | None = None,
     adapter_path: str | Path | None = None,
     allow_cpu: bool = False,
 ) -> None:
@@ -299,7 +319,7 @@ def run_inference(
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     set_deterministic_seed(config["generation"]["seed"])
-    runtime = _load_runtime(data_path, split_name, config, asr_model, llm_model, adapter_path)
-    paths, tool_env, catalog, asr, agent = runtime
+    runtime = _load_runtime(data_path, split_name, config, asr_model, llm_model, adapter_path, rewriter_model)
+    paths, tool_env, catalog, asr, agent, rewriter = runtime
     input_path = paths.split_dir / f"{split_name}.jsonl"
-    _write_predictions(input_path, output_path, paths, tool_env, catalog, asr, agent, config)
+    _write_predictions(input_path, output_path, paths, tool_env, catalog, asr, agent, config, rewriter=rewriter)

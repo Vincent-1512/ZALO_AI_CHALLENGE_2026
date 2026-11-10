@@ -18,6 +18,7 @@ def main() -> None:
     parser.add_argument("--output", default="result/submission.jsonl")
     parser.add_argument("--config", default="configs/baseline.json")
     parser.add_argument("--asr-model")
+    parser.add_argument("--rewriter-model")
     parser.add_argument("--llm-model")
     parser.add_argument("--adapter")
     parser.add_argument("--allow-cpu", action="store_true")
@@ -29,6 +30,7 @@ def main() -> None:
         args.output,
         config,
         asr_model=args.asr_model,
+        rewriter_model=args.rewriter_model,
         llm_model=args.llm_model,
         adapter_path=args.adapter,
         allow_cpu=args.allow_cpu,

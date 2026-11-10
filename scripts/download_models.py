@@ -8,7 +8,7 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download pinned, public model revisions for offline use.")
     parser.add_argument("--config", default="configs/baseline.json")
-    parser.add_argument("--models", nargs="+", choices=("asr", "llm"), default=("asr", "llm"))
+    parser.add_argument("--models", nargs="+", choices=("asr", "rewriter", "llm"), default=("asr", "rewriter", "llm"))
     args = parser.parse_args()
     from huggingface_hub import snapshot_download
 
