@@ -21,7 +21,7 @@
 
 ---
 
-## 2. KIẾN TRÚC ĐỘT PHÁ: "DUAL-LLM + 2-GRAPH ENGINE"
+## 2. KIẾN TRÚC ĐỘT PHÁ: "DUAL-LLM + TOOLNET GRAPH ENGINE"
 
 Để giải quyết triệt để các thách thức trên mà không vi phạm bất kỳ quy chế nào, hệ thống sử dụng kiến trúc **3 Tầng phối hợp (Multi-Stage Pipeline)**:
 
@@ -31,13 +31,13 @@ flowchart TD
     
     ASR --"Transcript thô"--> Rewriter["2. QUÂN SƯ SUY LUẬN (Reasoning Rewriter)<br/>DeepSeek-R1-Distill-Qwen-1.5B (~1.54B)<br/>- Suy nghĩ logic trong thẻ <think>...</think><br/>- Sửa lỗi chính tả ASR, phương ngữ, tiếng lóng<br/>- Tính toán mốc ngày giờ ISO chuẩn xác<br/>- Xuất câu lệnh tiếng Việt chuẩn mực (Canonical)"]
 
-    Rewriter --"Câu lệnh chuẩn mực"--> TwoGraphs["3. HỆ THỐNG 2 GRAPH (Python In-Memory, <= 0.5ms)<br/>- Graph 1 (DialogueStateGraph): Liên kết ID lịch sử, luồng Read-Before-Write<br/>- Graph 2 (BipartiteToolGraph): Lọc 122 tools -> Top 10-15 tools bằng wRRF"]
+    Rewriter --"Câu lệnh chuẩn mực"--> ToolGraph["3. TOOLNET GRAPH ENGINE (Python In-Memory, <= 0.5ms)<br/>- BipartiteToolGraph: Lọc 122 tools -> Top 10-15 tools bằng wRRF<br/>- ToolNet Bottom-up Adaptation: Dìm điểm tool lỗi, đẩy tool thay thế"]
 
-    TwoGraphs --"Prompt tinh gọn + Top 10 Tools"--> ActionLLM["4. THỐNG SOÁI HÀNH ĐỘNG (Action Policy)<br/>Qwen2.5-3B-Instruct (~3.09B + LoRA)<br/>- Đọc prompt đã dọn sẵn<br/>- Chỉ tập trung 1 việc duy nhất: Nhả đúng JSON Tool Call"]
+    ToolGraph --"Prompt tinh gọn + Top 10 Tools"--> ActionLLM["4. THỐNG SOÁI HÀNH ĐỘNG (Action Policy)<br/>Qwen2.5-3B-Instruct (~3.09B + LoRA)<br/>- Đọc prompt đã dọn sẵn<br/>- Chỉ tập trung 1 việc duy nhất: Nhả đúng JSON Tool Call"]
 
     ActionLLM --'{"action": "call", ...}'--> ToolEnv["5. Thực thi ToolEnv<br/>(Lưu kết quả -> Gọi lại LLM)"]
     ActionLLM --'{"action": "stop"}'--> Finish(["KẾT THÚC MẪU TEST"])
-    ToolEnv --> TwoGraphs
+    ToolEnv --> ToolGraph
 ```
 
 ---
@@ -51,7 +51,7 @@ Hệ thống được thiết kế nằm gọn trong **"Vùng an toàn tuyệt �
 | **Mô hình ASR** | `vinai/PhoWhisper-medium` | **769 Triệu** ($0.769\text{B}$) | — |  Hợp lệ |
 | **Reasoning Model** | `deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B` | **1.54 Tỷ** ($1.540\text{B}$) | — |  Hợp lệ |
 | **Action LLM** | `Qwen/Qwen2.5-3B-Instruct` + LoRA | **3.10 Tỷ** ($3.104\text{B}$) | — |  Hợp lệ |
-| **Hai Graph** | Code Python In-Memory | **0 tham số** (Thuật toán đại số) | — |  Hợp lệ |
+| **ToolNet Graph** | Code Python In-Memory | **0 tham số** (Thuật toán đại số) | — |  Hợp lệ |
 | **TỔNG LLM** | **Reasoning (1.54B) + Action (3.10B)** | **4.64 Tỷ ($4.644\text{B}$)** | **< 5.00B** |  **DƯ 0.356B** |
 | **TỔNG HỆ THỐNG** | **ASR (0.77B) + Cả 2 LLMs (4.64B)** | **5.41 Tỷ ($5.413\text{B}$)** | **< 6.00B** |  **DƯ 0.587B** |
 | **VRAM chạy trên A30** | Load toàn bộ ở định dạng bfloat16/float16 | **~12.5 GB / 24 GB** | **24 GB** |  **DƯ ~11.5 GB** |
@@ -69,16 +69,16 @@ ZALO_AI_CHALLENGE_2026/
 │   └── baseline.json                 # Cấu hình chuẩn cho ASR, Rewriter, Action LLM và siêu tham số
 ├── src/lifemate/
 │   ├── reasoning_rewriter.py         # [TẦNG 1] Module bọc DeepSeek-R1-1.5B sửa lỗi ASR & chuẩn hóa câu
-│   ├── dialogue_graph.py             # [TẦNG 2] Graph 1: Xử lý thời gian, bóc tách thực thể, truy vết ID
-│   ├── graph_retrieval.py            # [TẦNG 2] Graph 2: Đồ thị Bipartite Tool Graph lọc công cụ bằng wRRF
-│   ├── prompts.py                    # Điểm hội tụ build_messages(): ráp nối 2 Graph vào prompt cho LLM
+│   ├── graph_retrieval.py            # [TẦNG 2] ToolNet: Đồ thị Bipartite Tool Graph lọc công cụ bằng wRRF & thích ứng lỗi
+│   ├── prompts.py                    # Điểm hội tụ build_messages(): ráp nối ToolNet vào prompt cho LLM
 │   ├── models.py                     # Quản lý load PhoWhisper, Qwen2.5-3B và adapter LoRA
-│   ├── middleware.py                 # Bộ lọc an toàn: vá lỗi định dạng JSON, ép kiểu tham số
+│   ├── middleware.py                 # Bộ lọc an toàn: vá lỗi định dạng JSON, ép kiểu tham số, Reflexion feedback
 │   └── runner.py                     # Vòng lặp ReAct trực tuyến lúc chạy test public / docker
 ├── training/
-│   ├── prepare_sft.py                # Sinh dữ liệu huấn luyện đa bước (Multi-step SFT Trajectory)
+│   ├── prepare_sft.py                # Sinh dữ liệu huấn luyện đa bước (kèm Hammer Masking)
 │   └── train_lora.py                 # Huấn luyện QLoRA 4-bit / bfloat16 cho Qwen2.5-3B
 └── notebooks/
+    ├── eval_asr_nbest_rewriter.ipynb # Đánh giá chất lượng ASR N-best hypotheses & LLM 1.5B Rewriter
     └── lifemate_colab_train.ipynb    # Notebook chạy thử nghiệm huấn luyện trên Colab / A100
 ```
 
@@ -95,9 +95,9 @@ python scripts/download_models.py --models asr rewriter llm
 - Rewriter: `models/DeepSeek-R1-Distill-Qwen-1.5B`
 - LLM: `models/Qwen2.5-3B-Instruct`
 
-### Bước 2: Hoàn thiện `dialogue_graph.py` & Nhúng vào `prompts.py`
-1. Đảm bảo `DialogueStateGraph` tự động tính toán thời gian `Auto Next-Day Roll` (nếu giờ hẹn $\le$ giờ hiện tại thì cộng 1 ngày).
-2. Trong `src/lifemate/prompts.py`, hàm `build_messages()` phải gọi `DialogueStateGraph` và đưa mục `"graph_resolution"` vào payload.
+### Bước 2: Thiết lập ToolNet Graph (`graph_retrieval.py`) & Nhúng vào `prompts.py`
+1. Đảm bảo `BipartiteToolGraph` trong `graph_retrieval.py` thực hiện xếp hạng wRRF và thích ứng đồ thị động (Bottom-up Graph Adaptation: dìm điểm tool bị lỗi, đẩy tool thay thế).
+2. Trong `src/lifemate/prompts.py`, hàm `build_messages()` gọi `available_tool_specs()` nhận cả `prior_calls` và `prior_results` để đồ thị cập nhật thích ứng theo thời gian thực.
 
 ### Bước 3: Tạo tập dữ liệu huấn luyện SFT (Multi-turn Trajectory)
 Mỗi mẫu trong tập train phải được rã thành các bước kế tiếp (`Step 1` $\rightarrow$ `Step 2` $\rightarrow$ `Stop`):
