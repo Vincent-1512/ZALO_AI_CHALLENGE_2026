@@ -1,0 +1,3 @@
+-r requirements-inference.txt
+# CUDA 13 wheels include T4 (sm75); verify kernels in the Colab runtime check.
+bitsandbytes==0.50.2

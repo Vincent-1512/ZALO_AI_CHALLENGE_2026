@@ -26,3 +26,12 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Docker packaging work areas (created by docker_submission/vm_build.sh)
+/work/
+/.done/
+/build.log
+/docker_submission/saved_models/*
+!/docker_submission/saved_models/README.txt
+/zac2026_*.tar.gz
+/zac2026_*.md5

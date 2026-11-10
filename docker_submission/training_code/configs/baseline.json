@@ -1,0 +1,45 @@
+{
+  "models": {
+    "asr": {
+      "repo_id": "vinai/PhoWhisper-medium",
+      "revision": "55a7e3e",
+      "parameters": 769000000,
+      "local_path": "models/PhoWhisper-medium"
+    },
+    "llm": {
+      "repo_id": "Qwen/Qwen3-4B-Instruct-2507",
+      "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+      "parameters": 4022468096,
+      "local_path": "models/Qwen3-4B-Instruct-2507"
+    },
+    "adapter_path": null
+  },
+  "limits": {
+    "max_context_tokens": 8192,
+    "hard_context_limit": 16384,
+    "max_new_tokens": 192,
+    "max_tool_steps": 8,
+    "sample_seconds": 30,
+    "asr_batch_size": 4,
+    "audio_sample_rate": 16000
+  },
+  "generation": {
+    "seed": 2026,
+    "do_sample": false,
+    "num_beams": 1,
+    "temperature": 0.0
+  },
+  "training": {
+    "seed": 2026,
+    "train_ratio": 0.8,
+    "dev_ratio": 0.1,
+    "holdout_ratio": 0.1,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "learning_rate": 0.0001,
+    "epochs": 2,
+    "max_sequence_length": 8192,
+    "gradient_accumulation_steps": 16
+  }
+}

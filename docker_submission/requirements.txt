@@ -1,0 +1,13 @@
+# Install PyTorch FIRST, matching the grader (CUDA 13.2, RTX 5090 = Blackwell sm_120): see BUILD.md.
+# Do not let pip pick torch implicitly; an old CUDA build will not run on the 5090.
+# Versions below are the ones used on Vast for training/eval (requirements-inference.txt in the repo).
+transformers==4.57.1
+peft==0.17.1
+accelerate==1.10.1
+safetensors==0.6.2
+soundfile==0.13.1
+scipy==1.16.2
+numpy==2.2.6
+sentencepiece
+jupyterlab
+nbformat

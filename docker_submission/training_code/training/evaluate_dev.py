@@ -1,0 +1,302 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import unicodedata
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from lifemate.data import import_tool_env, load_catalog, read_jsonl, resolve_split
+from lifemate.models import SpeechRecognizer, ToolAgent
+from lifemate.runner import infer_one, set_deterministic_seed
+
+
+def tokens(value: str) -> list[str]:
+    normalized = unicodedata.normalize("NFC", value).lower()
+    return re.findall(r"[^\W_]+", normalized, flags=re.UNICODE)
+
+
+def token_f1(predicted: str, gold: str) -> float:
+    left, right = tokens(predicted), tokens(gold)
+    if not left or not right:
+        return float(left == right)
+    overlap = sum(min(left.count(token), right.count(token)) for token in set(left))
+    precision, recall = overlap / len(left), overlap / len(right)
+    return 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+
+
+def calls_match(predicted: dict, gold: dict, catalog_index: dict[str, dict]) -> bool:
+    if predicted.get("name") != gold.get("name"):
+        return False
+    predicted_args, gold_args = predicted.get("arguments", {}), gold.get("arguments", {})
+    if set(predicted_args) != set(gold_args):
+        return False
+    properties = catalog_index.get(gold["name"], {}).get("parameters", {}).get("properties", {})
+    for key, expected in gold_args.items():
+        actual = predicted_args[key]
+        if properties.get(key, {}).get("x-match") == "fuzzy":
+            if not isinstance(actual, str) or not isinstance(expected, str) or token_f1(actual, expected) <= 0.6:
+                return False
+        elif actual != expected:
+            return False
+    return True
+
+
+def maximum_matching(predicted: list[dict], gold: list[dict], catalog_index: dict) -> int:
+    edges = [[i for i, target in enumerate(gold) if calls_match(call, target, catalog_index)] for call in predicted]
+    matched = [-1] * len(gold)
+
+    def assign(prediction_index: int, visited: set[int]) -> bool:
+        for gold_index in edges[prediction_index]:
+            if gold_index in visited:
+                continue
+            visited.add(gold_index)
+            if matched[gold_index] == -1 or assign(matched[gold_index], visited):
+                matched[gold_index] = prediction_index
+                return True
+        return False
+
+    return sum(assign(index, set()) for index in range(len(predicted)))
+
+
+def changed_apps_match(predicted_state: dict, gold_state: dict, state_hash) -> bool:
+    return all(state_hash({app: predicted_state.get(app)}) == state_hash({app: state}) for app, state in gold_state.items())
+
+
+def official_score(predicted_calls: list, gold_calls: list, matched: int, hash_ok: bool) -> float:
+    """Per-sample score from the published formula (Evaluation tab, 09/11/2026)."""
+    if not gold_calls:
+        return 1.0 if not predicted_calls else 0.0
+    if not hash_ok or matched == 0:
+        return 0.0
+    unmatched = len(predicted_calls) - matched
+    precision = matched / (matched + unmatched)
+    recall = matched / len(gold_calls)
+    return 2 * precision * recall / (precision + recall)
+
+
+def gold_state_hash(tool_env, split, sample) -> str:
+    """Hash of the state reached by replaying the gold calls in a fresh ToolEnv (the organisers' reference)."""
+    env = tool_env(split.split_name, sample["id"], root=split.env_root)
+    for call in sample["label"]["tool_calls"]:
+        env.call(call["name"], call.get("arguments", {}))
+    return env.get_state_hash()
+
+
+class OracleRecognizer:
+    """Dev-only diagnostic: returns the gold transcript for each audio file (separates ASR errors from policy errors)."""
+
+    def __init__(self, rows, split_dir):
+        from lifemate.data import resolve_audio_path
+        self.text = {}
+        for row in rows:
+            self.text[str(resolve_audio_path(row["audio"], split_dir))] = row["audio_text"]
+            for turn in row.get("history", []):
+                if turn.get("role") == "user" and turn.get("audio"):
+                    self.text[str(resolve_audio_path(turn["audio"], split_dir))] = turn["audio_text"]
+
+    def transcribe_many(self, paths, max_new_tokens=128):
+        return [self.text[str(path)] for path in paths]
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Evaluate one model on the fixed train-dev split.")
+    parser.add_argument("--data-root", default="data/raw/train+public_test")
+    parser.add_argument("--sft-dev", default="data/processed/sft/dev.jsonl")
+    parser.add_argument("--config", default="configs/baseline.json")
+    parser.add_argument("--asr-model")
+    parser.add_argument("--llm-model")
+    parser.add_argument("--adapter")
+    parser.add_argument("--limit-samples", type=int, default=0)
+    parser.add_argument("--report", default="reports/runs/dev_metrics.json")
+    parser.add_argument("--per-sample-log", help="Write one JSON line per dev sample (ASR text, gold vs predicted calls, end reason)")
+    parser.add_argument("--asr-cache", help="Optional JSON file that memoises ASR transcripts across evaluations")
+    parser.add_argument("--asr-correct", action="store_true", help="Repair ASR spans from sample context")
+    parser.add_argument("--oracle-transcript", action="store_true", help="Diagnostic only: use gold audio_text instead of ASR")
+    parser.add_argument("--num-samples", type=int, default=1, help="Best-of-k action candidates per step")
+    parser.add_argument("--temperature", type=float, help="Sampling temperature; only with --num-samples > 1")
+    return parser.parse_args()
+
+
+def load_evaluation_data(args):
+    config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    set_deterministic_seed(config["generation"]["seed"])
+    split = resolve_split(args.data_root, "train")
+    tool_env = import_tool_env(split.split_dir)
+    from zaic_tools import state_hash
+
+    catalog = load_catalog(split.split_dir)
+    index = {tool["name"]: tool for app in catalog["apps"] for tool in app["tools"]}
+    dev_ids = {row["sample_id"] for row in read_jsonl(Path(args.sft_dev))}
+    rows = [row for row in read_jsonl(split.split_dir / "train.jsonl") if row["id"] in dev_ids]
+    if not rows or {row["id"] for row in rows} != dev_ids:
+        raise ValueError("The SFT dev IDs do not match the available train samples")
+    return config, split, tool_env, catalog, index, state_hash, rows
+
+
+def load_agent(config: dict, args):
+    asr_config, llm_config = config["models"]["asr"], config["models"]["llm"]
+    asr = SpeechRecognizer(
+        args.asr_model or asr_config["local_path"],
+        batch_size=config["limits"]["asr_batch_size"],
+        sample_rate=config["limits"]["audio_sample_rate"],
+    )
+    agent = ToolAgent(
+        args.llm_model or llm_config["local_path"],
+        args.adapter or config["models"].get("adapter_path"),
+        min(config["limits"]["max_context_tokens"], config["limits"]["hard_context_limit"]),
+        config["limits"]["max_new_tokens"],
+    )
+    return asr, agent
+
+
+def evaluate_sample(sample, runtime):
+    tool_env, split, catalog, index, state_hash, asr, agent, max_steps, asr_correct, num_samples, temperature = runtime
+    profile = {}
+    calls, _, env = infer_one(
+        sample, tool_env, split, catalog, asr, agent, max_steps,
+        return_env_for_train_eval=True, profile=profile, asr_correct=asr_correct,
+        num_samples=num_samples, temperature=temperature,
+    )
+    expected = sample["label"]["tool_calls"]
+    matched = maximum_matching(calls, expected, index)
+    hash_ok = env.get_state_hash() == gold_state_hash(tool_env, split, sample)
+    return {
+        "official_score": official_score(calls, expected, matched, hash_ok),
+        "hash_match": hash_ok,
+        "id": sample["id"],
+        "state_match": changed_apps_match(env.get_state(), sample["label"]["final_state"], state_hash),
+        "matched_calls": matched,
+        "predicted_calls": len(calls),
+        "gold_calls": len(expected),
+        "oos_exact": not calls if not expected else None,
+        "profile": profile,
+        "detail": {
+            "asr_text": profile.get("transcript"),
+            "gold_text": sample.get("audio_text"),
+            "end_reason": profile.get("end_reason", "unknown"),
+            "schema_retries": profile.get("schema_retries", 0),
+            "gold_calls": expected,
+            "predicted_calls": calls,
+        },
+    }
+
+
+def percentile(values: list[float], quantile: float) -> float:
+    ordered = sorted(values)
+    index = min(round((len(ordered) - 1) * quantile), len(ordered) - 1)
+    return round(ordered[index], 4)
+
+
+def latency_summary(profiles: list[dict]) -> dict:
+    latency = {}
+    for phase in ("asr_seconds", "policy_seconds", "tool_seconds", "total_seconds"):
+        values = [row.get(phase, 0.0) for row in profiles]
+        latency[phase] = {
+            "p50": percentile(values, 0.50), "p95": percentile(values, 0.95),
+            "p99": percentile(values, 0.99), "max": round(max(values), 4),
+        }
+    return latency
+
+
+def build_report(results: list[dict]) -> dict:
+    samples = len(results)
+    matches = sum(row["matched_calls"] for row in results)
+    predictions = sum(row["predicted_calls"] for row in results)
+    gold = sum(row["gold_calls"] for row in results)
+    precision = matches / predictions if predictions else 0.0
+    recall = matches / gold if gold else 0.0
+    oos = [row["oos_exact"] for row in results if row["oos_exact"] is not None]
+    profiles = [row["profile"] for row in results]
+    end_reasons: dict[str, int] = {}
+    for row in results:
+        reason = row["profile"].get("end_reason", "unknown")
+        end_reasons[reason] = end_reasons.get(reason, 0) + 1
+    return {
+        "official_score_100": 100 * sum(row["official_score"] for row in results) / samples,
+        "full_hash_match_rate": sum(row["hash_match"] for row in results) / samples,
+        "end_reason_counts": end_reasons,
+        "state_match_count": sum(row["state_match"] for row in results),
+        "empty_prediction_samples": sum(1 for row in results if row["predicted_calls"] == 0),
+        "empty_gold_samples": sum(1 for row in results if row["gold_calls"] == 0),
+        "schema_retry_total": sum(row["profile"].get("schema_retries", 0) for row in results),
+        "split": "train-dev",
+        "samples": samples,
+        "changed_app_state_match_rate": sum(row["state_match"] for row in results) / samples,
+        "matched_calls": matches,
+        "predicted_calls": predictions,
+        "gold_calls": gold,
+        "tool_call_precision": precision,
+        "tool_call_recall": recall,
+        "tool_call_f1_diagnostic": 2 * precision * recall / (precision + recall) if precision + recall else 0.0,
+        "oos_samples": len(oos),
+        "oos_exact_rate": sum(oos) / len(oos) if oos else None,
+        "latency_seconds": latency_summary(profiles),
+        "note": "official_score_100 follows the published per-sample formula (full-state hash AND call F1); gold hash is from replaying gold calls. State-match is a lenient diagnostic (changed apps only).",
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    if args.num_samples < 1:
+        raise ValueError("--num-samples must be >= 1")
+    if args.temperature is not None and (args.num_samples == 1 or args.temperature <= 0):
+        raise ValueError("--temperature must be positive and requires --num-samples > 1")
+    import torch
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("Train-dev rollout requires a CUDA GPU.")
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    if args.asr_cache:
+        os.environ["LIFEMATE_ASR_CACHE"] = str(Path(args.asr_cache).resolve())
+    config, split, tool_env, catalog, index, state_hash, rows = load_evaluation_data(args)
+    if args.limit_samples > 0:
+        rows = rows[: args.limit_samples]
+        print(f"Evaluating first {len(rows)} dev samples", flush=True)
+    asr, agent = load_agent(config, args)
+    if args.oracle_transcript:
+        asr = OracleRecognizer(rows, split.split_dir)
+        print("ORACLE transcripts: ASR bypassed (diagnostic, not a valid score)", flush=True)
+    runtime = (tool_env, split, catalog, index, state_hash, asr, agent,
+               config["limits"]["max_tool_steps"], args.asr_correct, args.num_samples, args.temperature)
+    results = []
+    started = time.perf_counter()
+    log_stream = None
+    if args.per_sample_log:
+        Path(args.per_sample_log).parent.mkdir(parents=True, exist_ok=True)
+        log_stream = Path(args.per_sample_log).open("w", encoding="utf-8")
+    for sample_index, row in enumerate(rows, start=1):
+        outcome = evaluate_sample(row, runtime)
+        results.append(outcome)
+        if log_stream:
+            record = {key: outcome[key] for key in ("id", "state_match", "hash_match", "official_score", "matched_calls", "predicted_calls", "gold_calls")}
+            record.update(outcome["detail"])
+            if args.asr_correct:
+                record["asr_corrections"] = outcome["profile"].get("asr_corrections", [])
+            if args.num_samples > 1:
+                record["candidate_valid_count"] = outcome["profile"].get("candidate_valid_count", 0)
+                record["candidate_agreement"] = outcome["profile"].get("candidate_agreement", [])
+            record["total_seconds"] = round(outcome["profile"].get("total_seconds", 0.0), 3)
+            log_stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+            log_stream.flush()
+        if sample_index % 10 == 0 or sample_index == len(rows):
+            elapsed = time.perf_counter() - started
+            print(f"evaluated={sample_index}/{len(rows)} elapsed_seconds={elapsed:.1f}", flush=True)
+    if log_stream:
+        log_stream.close()
+    report = build_report(results)
+    path = Path(args.report)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
