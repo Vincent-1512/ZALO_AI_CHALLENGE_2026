@@ -154,17 +154,53 @@ class BipartiteToolGraph:
         transcript: str,
         history: list[dict[str, Any]],
         prior_calls: list[dict[str, Any]] | None = None,
+        prior_results: list[dict[str, Any]] | None = None,
         alpha_a: float = 1.5,
         alpha_t: float = 1.0,
         rrf_k: int = 10,
     ) -> list[dict[str, Any]]:
-        """Rank tools using Type-Specific Weighted Reciprocal Rank Fusion (wRRF)
+        """Rank tools using Type-Specific Weighted Reciprocal Rank Fusion (wRRF),
+        ToolNet Dynamic Edge Adaptation (Bottom-up graph updating),
         and Tool -> App Graph Traversal:
             s_new(e) = alpha_T / (k + r_T(e))  for e in C_T
             s_new(e) = alpha_A / (k + r_A(e))  for e in C_A
         """
         if not self.tool_nodes:
             return list(self.sys_tools)
+
+        # ToolNet Bottom-Up Graph Adaptation: Analyze execution outcomes from prior calls
+        failed_tools: set[str] = set()
+        empty_read_tools: set[str] = set()
+        successful_tools: set[str] = set()
+        active_entity_apps: set[str] = set()
+
+        if prior_calls and prior_results:
+            for call, res in zip(prior_calls, prior_results):
+                t_name = call.get("name", "") if isinstance(call, dict) else ""
+                if not t_name:
+                    continue
+                is_failed = False
+                if isinstance(res, dict):
+                    status = str(res.get("status", "")).lower()
+                    if status in ("error", "failed", "fail") or res.get("ok") is False or "error" in res:
+                        is_failed = True
+                    else:
+                        list_fields = [v for v in res.values() if isinstance(v, list)]
+                        if list_fields and all(len(lst) == 0 for lst in list_fields):
+                            empty_read_tools.add(t_name)
+                        else:
+                            successful_tools.add(t_name)
+                            if "." in t_name:
+                                active_entity_apps.add(t_name.split(".", 1)[0])
+                elif isinstance(res, list) and len(res) == 0:
+                    empty_read_tools.add(t_name)
+                else:
+                    successful_tools.add(t_name)
+                    if "." in t_name:
+                        active_entity_apps.add(t_name.split(".", 1)[0])
+
+                if is_failed:
+                    failed_tools.add(t_name)
 
         # Build query representation from current request + recent user/assistant history turns
         weighted_query: Counter[str] = Counter()
@@ -197,6 +233,8 @@ class BipartiteToolGraph:
                 sim += 0.50
             elif app_id in history_apps:
                 sim += 0.20
+            if app_id in active_entity_apps:
+                sim += 0.30
             app_raw_scores[app_id] = sim
 
         sorted_apps = sorted(
@@ -205,12 +243,24 @@ class BipartiteToolGraph:
         )
         rank_a: dict[str, int] = {app_id: idx + 1 for idx, app_id in enumerate(sorted_apps)}
 
-        # 2. Score and rank Tool Corpus C_T
+        # 2. Score and rank Tool Corpus C_T with ToolNet Edge Penalties & Boosts
         tool_raw_scores: dict[str, float] = {}
         for tool_id, tool_node in self.tool_nodes.items():
             sim = self._cosine_lexical_similarity(weighted_query, tool_node.tokens)
             if tool_node.owner_app in active_apps:
                 sim += 0.25
+
+            # ToolNet Edge Adaptation:
+            # - Deprecate failed tools so LLM does not repeat the same failure
+            if tool_id in failed_tools:
+                sim -= 2.0
+            # - Down-rank repeating an empty read
+            elif tool_id in empty_read_tools:
+                sim -= 0.50
+            # - Boost write tools in an app once entities are resolved (Read-Before-Write Chaining)
+            elif tool_node.owner_app in active_entity_apps and tool_node.kind == "write":
+                sim += 0.40
+
             tool_raw_scores[tool_id] = sim
 
         sorted_tools = sorted(

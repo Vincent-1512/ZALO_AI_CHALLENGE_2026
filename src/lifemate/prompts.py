@@ -36,12 +36,14 @@ def available_tool_specs(
     catalog: dict[str, Any],
     transcript: str = "",
     prior_calls: list[dict[str, Any]] | None = None,
+    prior_results: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     graph = BipartiteToolGraph.from_sample_and_catalog(sample, catalog, _compact_schema)
     return graph.rank_tools_wrrf(
         transcript=transcript,
         history=sample.get("history", []),
         prior_calls=prior_calls,
+        prior_results=prior_results,
         alpha_a=1.5,
         alpha_t=1.0,
         rrf_k=10,
@@ -97,7 +99,7 @@ def build_messages(
             if key in context
         },
         "available_tools": available_tool_specs(
-            sample, catalog, transcript=transcript, prior_calls=prior_calls
+            sample, catalog, transcript=transcript, prior_calls=prior_calls, prior_results=prior_results
         ),
         "history": normalized_history(sample.get("history", []), transcripts),
         "steps_this_request": [

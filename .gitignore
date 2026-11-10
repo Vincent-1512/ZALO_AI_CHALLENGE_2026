@@ -20,6 +20,8 @@ private_test/
 # Local environments and secrets.
 .venv/
 venv/
+Agent-FLAN/
+Hammer/
 __pycache__/
 *.py[cod]
 .env

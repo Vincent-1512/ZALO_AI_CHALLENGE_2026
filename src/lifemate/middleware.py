@@ -676,22 +676,25 @@ def evaluate_4_criteria_verifier(
             task_completion = False
             err_msg = result.get("error") or result.get("message") or "Lỗi thực thi"
             feedback_phi = (
-                f"Verifier [execution_validity=FAIL]: Lệnh '{name}' thất bại ({err_msg}). "
-                "Hãy kiểm tra lại đối số, gọi tool read khác hoặc dùng sys.ask_missing_info; không gọi lặp lại y hệt."
+                f"[Reflexion - Phản chiếu lỗi]: Lệnh '{name}' thất bại với lý do: {err_msg}. "
+                f"Đồ thị ToolNet đã tự động hạ điểm và loại bỏ '{name}' khỏi nhóm ưu tiên. "
+                "Chiến lược điều chỉnh: Hãy kiểm tra đối số, chuyển sang công cụ tra cứu thay thế hoặc gọi sys.ask_missing_info; tuyệt đối không gọi lại công cụ này."
             )
         elif kind == "read":
             list_fields = [v for v in result.values() if isinstance(v, list)]
             if list_fields and all(len(lst) == 0 for lst in list_fields):
                 task_completion = False
                 feedback_phi = (
-                    f"Verifier [task_completion=INCOMPLETE]: Công cụ tra cứu '{name}' trả về danh sách rỗng. "
-                    "Tuyệt đối không tự bịa ID cho bước tiếp theo; hãy thử mở rộng điều kiện tìm kiếm hoặc gọi sys.ask_missing_info."
+                    f"[Reflexion - Phản chiếu tra cứu]: Công cụ tra cứu '{name}' trả về danh sách rỗng. "
+                    "Chiến lược điều chỉnh: Thực thể chưa tồn tại hoặc điều kiện lọc quá hẹp. "
+                    "Tuyệt đối không tự bịa ID cho bước tiếp theo; hãy nới lỏng điều kiện hoặc dùng sys.ask_missing_info."
                 )
     elif isinstance(result, list) and len(result) == 0 and kind == "read":
         task_completion = False
         feedback_phi = (
-            f"Verifier [task_completion=INCOMPLETE]: Công cụ tra cứu '{name}' trả về danh sách rỗng. "
-            "Tuyệt đối không tự bịa ID cho bước tiếp theo; hãy thử mở rộng điều kiện tìm kiếm hoặc gọi sys.ask_missing_info."
+            f"[Reflexion - Phản chiếu tra cứu]: Công cụ tra cứu '{name}' trả về danh sách rỗng. "
+            "Chiến lược điều chỉnh: Thực thể chưa tồn tại hoặc điều kiện lọc quá hẹp. "
+            "Tuyệt đối không tự bịa ID cho bước tiếp theo; hãy nới lỏng điều kiện hoặc dùng sys.ask_missing_info."
         )
 
     passed = all((task_completion, argument_consistency, execution_validity, constraint_satisfaction))
