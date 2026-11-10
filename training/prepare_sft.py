@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import random
 import re
+import string
 import sys
 import unicodedata
 from collections import defaultdict
@@ -20,6 +22,70 @@ from lifemate.prompts import action_json, build_messages
 def normalized_request(text: str) -> str:
     text = unicodedata.normalize("NFC", text).lower()
     return re.sub(r"\W+", " ", text, flags=re.UNICODE).strip()
+
+
+def _generate_random_name(prefix: str, length: int, rng: random.Random) -> str:
+    letters = string.ascii_lowercase + string.digits
+    rand_part = "".join(rng.choices(letters, k=length))
+    return f"{prefix}_{rand_part}"
+
+
+def create_masked_variant(
+    row: dict,
+    catalog: dict,
+    rng: random.Random,
+) -> tuple[dict, dict]:
+    """Hammer ICLR 2025 Function & Parameter Masking augmentation:
+    Replaces function and parameter names with randomized identifiers
+    while preserving descriptions and values to eliminate name-memorization bias.
+    """
+    masked_row = copy.deepcopy(row)
+    masked_catalog = copy.deepcopy(catalog)
+
+    fn_map: dict[str, str] = {}
+    param_map: dict[str, dict[str, str]] = {}
+
+    for app in masked_catalog.get("apps", []):
+        for tool in app.get("tools", []):
+            old_name = tool.get("name", "")
+            if old_name and old_name != "sys.ask_missing_info":
+                prefix = old_name.split(".", 1)[0] if "." in old_name else "fn"
+                new_fn = f"{prefix}.{_generate_random_name('act', 5, rng)}"
+                fn_map[old_name] = new_fn
+                tool["name"] = new_fn
+
+                p_dict = param_map.setdefault(old_name, {})
+                props = tool.get("parameters", {}).get("properties", {})
+                if isinstance(props, dict):
+                    new_props = {}
+                    for p_old, p_spec in props.items():
+                        new_p = _generate_random_name("p", 4, rng)
+                        p_dict[p_old] = new_p
+                        new_props[new_p] = p_spec
+                    tool["parameters"]["properties"] = new_props
+                    if "required" in tool.get("parameters", {}):
+                        tool["parameters"]["required"] = [
+                            p_dict.get(r, r) for r in tool["parameters"]["required"]
+                        ]
+
+    context = masked_row.get("context", {})
+    if "installed_apps" in context and isinstance(context["installed_apps"], dict):
+        for app_data in context["installed_apps"].values():
+            if isinstance(app_data, dict) and "tools" in app_data and isinstance(app_data["tools"], list):
+                app_data["tools"] = [fn_map.get(t, t) for t in app_data["tools"]]
+
+    labels = masked_row.get("label", {})
+    for call in labels.get("tool_calls", []):
+        old_fn = call.get("name", "")
+        if old_fn in fn_map:
+            call["name"] = fn_map[old_fn]
+            p_dict = param_map.get(old_fn, {})
+            old_args = call.get("arguments", {})
+            if isinstance(old_args, dict):
+                call["arguments"] = {p_dict.get(k, k): v for k, v in old_args.items()}
+
+    masked_row["id"] = f"{row['id']}_hammer_masked"
+    return masked_row, masked_catalog
 
 
 def split_rows(rows: list[dict], seed: int, ratios: tuple[float, float, float]):
@@ -71,10 +137,34 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
             stream.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def write_partitions(output_dir: Path, partitions: dict, catalog: dict, seed: int, ratios: tuple):
-    manifest = {"seed": seed, "ratios": ratios, "samples": {}, "records": {}}
+def write_partitions(
+    output_dir: Path,
+    partitions: dict,
+    catalog: dict,
+    seed: int,
+    ratios: tuple,
+    augment_masking: bool = False,
+    mask_ratio: float = 0.5,
+):
+    manifest = {
+        "seed": seed,
+        "ratios": ratios,
+        "augment_masking": augment_masking,
+        "samples": {},
+        "records": {},
+    }
+    rng = random.Random(seed)
     for name, subset in partitions.items():
         records = make_records(subset, catalog)
+        if augment_masking and name == "train":
+            augmented_records = []
+            for row in subset:
+                if rng.random() < mask_ratio:
+                    masked_row, masked_catalog = create_masked_variant(row, catalog, rng)
+                    augmented_records.extend(make_records([masked_row], masked_catalog))
+            records.extend(augmented_records)
+            manifest["augmented_records"] = len(augmented_records)
+
         write_jsonl(output_dir / f"{name}.jsonl", records)
         manifest["samples"][name] = len(subset)
         manifest["records"][name] = len(records)
@@ -91,6 +181,18 @@ def main() -> None:
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--dev-ratio", type=float, default=0.1)
     parser.add_argument("--holdout-ratio", type=float, default=0.1)
+    parser.add_argument(
+        "--augment-masking",
+        action="store_true",
+        default=False,
+        help="Enable Hammer ICLR 2025 Function & Parameter Masking augmentation for train partition",
+    )
+    parser.add_argument(
+        "--mask-ratio",
+        type=float,
+        default=0.5,
+        help="Ratio of train samples to augment with randomized masking (default 0.5)",
+    )
     args = parser.parse_args()
     ratios = (args.train_ratio, args.dev_ratio, args.holdout_ratio)
     if abs(sum(ratios) - 1.0) > 1e-8 or min(ratios) <= 0:
@@ -101,7 +203,15 @@ def main() -> None:
     rows = list(read_jsonl(split.split_dir / "train.jsonl"))
     partitions = split_rows(rows, args.seed, ratios)
     output_dir = Path(args.output_dir)
-    manifest = write_partitions(output_dir, partitions, catalog, args.seed, ratios)
+    manifest = write_partitions(
+        output_dir,
+        partitions,
+        catalog,
+        args.seed,
+        ratios,
+        augment_masking=args.augment_masking,
+        mask_ratio=args.mask_ratio,
+    )
     (output_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

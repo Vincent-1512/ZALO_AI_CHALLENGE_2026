@@ -107,3 +107,4 @@ if __name__ == "__main__":
     test_toolnet_bottom_up_adaptation()
     test_top_down_reflexion()
     print("ALL TESTS PASSED 100%!")
+

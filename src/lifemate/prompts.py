@@ -17,13 +17,18 @@ def _catalog_index(catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _compact_schema(schema: Any) -> Any:
+    """Hammer/X-LAM style ultra-compact schema pruner:
+    Removes title, $schema, additionalProperties, examples, and empty fields
+    to conserve prompt context budget and reduce latency.
+    """
     if isinstance(schema, list):
         return [_compact_schema(item) for item in schema]
     if not isinstance(schema, dict):
         return schema
     cleaned: dict[str, Any] = {}
+    ignored_keys = {"additionalProperties", "title", "$schema", "examples", "$id", "definitions"}
     for k, v in schema.items():
-        if k in ("additionalProperties", "title", "$schema"):
+        if k in ignored_keys:
             continue
         if v in ("", [], {}, None) and k not in ("default", "enum"):
             continue
