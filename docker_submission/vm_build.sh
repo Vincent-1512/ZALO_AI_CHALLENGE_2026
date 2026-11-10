@@ -7,7 +7,7 @@
 #   tail -f build.log          # Ctrl+C chỉ thoát tail, tiến trình vẫn chạy dù mất SSH
 #
 # Chạy lại an toàn: mỗi bước xong đều ghi dấu vào .done/ và sẽ được bỏ qua. Muốn làm lại một bước: rm .done/<bước>
-# Bước: preflight -> download -> merge -> data -> build -> test -> export
+# Bước: preflight -> download -> cudacheck -> merge -> data -> build -> test -> export
 set -euo pipefail
 KIT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$KIT"
 mkdir -p .done work
@@ -36,7 +36,7 @@ fi
 
 if step download; then
   python3 -m pip install -q -U huggingface_hub transformers==4.57.1 peft==0.17.1 accelerate==1.10.1 safetensors==0.6.2 sentencepiece
-  python3 -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu || python3 -m pip install -q torch
+  python3 -m pip install -q torch --index-url https://download.pytorch.org/whl/cu128 || python3 -m pip install -q torch
   python3 - <<PY
 from huggingface_hub import snapshot_download
 for repo, dest in (("$LLM_REPO","work/qwen"),("$ASR_REPO","work/asr_ft"),("$ADAPTER_REPO","work/adapter")):
@@ -44,6 +44,13 @@ for repo, dest in (("$LLM_REPO","work/qwen"),("$ASR_REPO","work/asr_ft"),("$ADAP
     print("ok", repo, flush=True)
 PY
   ok download
+fi
+
+if step cudacheck; then
+  # CUDA thật sự chạy được trên máy này không? (một số máy thuê: nvidia-smi bình thường nhưng CUDA treo -> đổi máy ngay)
+  timeout 120 python3 -c "import torch; x=torch.zeros(1).cuda(); print('CUDA OK', torch.cuda.get_device_name(0), torch.__version__)" \
+    || { echo "LỖI: CUDA không chạy được (treo hoặc lỗi). Máy này hỏng GPU: hủy và thuê VM khác."; exit 1; }
+  ok cudacheck
 fi
 
 if step merge; then

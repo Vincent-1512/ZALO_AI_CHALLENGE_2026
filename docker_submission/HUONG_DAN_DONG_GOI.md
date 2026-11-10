@@ -44,7 +44,7 @@ nohup bash docker_submission/vm_build.sh > build.log 2>&1 &
 tail -f build.log
 ```
 
-Script chạy lần lượt: `preflight` (kiểm tra Docker/GPU/ổ đĩa) → `download` (3 repo HuggingFace) → `merge` (gộp adapter LoRA vào Qwen, ghi `MANIFEST.json`) → `data` (dữ liệu thử) → `build` (dựng image `zac2026-teamname:v1`) → `test` (chạy 30 mẫu với `--network none`) → `export` (`zac2026_TeamName.tar.gz` + `.md5`).
+Script chạy lần lượt: `preflight` (kiểm tra Docker/GPU/ổ đĩa) → `download` (3 repo HuggingFace) → `cudacheck` (CUDA có chạy thật không, tối đa 120 s) → `merge` (gộp adapter LoRA vào Qwen, ghi `MANIFEST.json`) → `data` (dữ liệu thử) → `build` (dựng image `zac2026-teamname:v1`) → `test` (chạy 30 mẫu với `--network none`) → `export` (`zac2026_TeamName.tar.gz` + `.md5`).
 Chạy lại cùng lệnh sau khi sửa lỗi: bước đã xong tự bỏ qua (dấu trong `.done/`). Làm lại một bước: `rm .done/<bước>`.
 
 ## 3. Kết quả phải đạt (gửi lại cho chủ dự án)
@@ -57,6 +57,7 @@ Chạy lại cùng lệnh sau khi sửa lỗi: bước đã xong tự bỏ qua (
 
 ## 4. Lỗi thường gặp
 
+- `LỖI: CUDA không chạy được` ở bước `cudacheck`: GPU/driver của máy hỏng (nvidia-smi bình thường nhưng CUDA treo); đổi máy.
 - `docker không dùng được GPU`: thiếu nvidia-container-toolkit, hoặc driver cũ hơn CUDA 12.8.
 - `Ổ đĩa ... cần >= 90 GB`: giải phóng ổ đĩa.
 - Merge chậm bất thường: script dùng GPU nếu có (`device_map="cuda"`); trên CPU gộp half-precision rất chậm.
