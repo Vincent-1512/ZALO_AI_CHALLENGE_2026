@@ -30,3 +30,4 @@ def test_reasoning_rewriter_with_history():
     raw = "gọi điện thoại thoại cho bà ấy"
     cleaned = rewriter.rewrite(raw, context=context, history=history)
     assert "gọi điện thoại cho bà ấy" in cleaned
+

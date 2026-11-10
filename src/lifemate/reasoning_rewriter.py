@@ -191,3 +191,4 @@ class ReasoningRewriter:
         except Exception as error:
             logger.warning("ReasoningRewriter inference error: %s. Using heuristic fallback.", error)
             return self._heuristic_rewrite(raw_transcript, context)
+

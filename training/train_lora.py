@@ -150,12 +150,13 @@ def load_quantized_model(
     if use_flash_attention:
         extra_kwargs["attn_implementation"] = "flash_attention_2"
 
+    is_local = Path(model_path).exists()
     base = AutoModelForCausalLM.from_pretrained(
         model_path,
         quantization_config=quantization,
         dtype=compute_dtype,
         device_map="auto",
-        local_files_only=True,
+        local_files_only=is_local,
         **extra_kwargs,
     )
     base = prepare_model_for_kbit_training(base, use_gradient_checkpointing=True)
@@ -211,7 +212,8 @@ def run_training(args) -> None:
 
     seed_everything(args.seed)
     compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    tokenizer = AutoTokenizer.from_pretrained(args.model_path, local_files_only=True)
+    is_local = Path(args.model_path).exists()
+    tokenizer = AutoTokenizer.from_pretrained(args.model_path, local_files_only=is_local)
     tokenizer.padding_side = "right"
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
