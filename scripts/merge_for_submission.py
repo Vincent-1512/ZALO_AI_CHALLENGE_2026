@@ -59,10 +59,14 @@ def main() -> None:
     llm_out.mkdir(parents=True, exist_ok=True)
     asr_out.mkdir(parents=True, exist_ok=True)
 
-    model = AutoModelForCausalLM.from_pretrained(args.llm_base, torch_dtype=torch.float16,
+    use_cuda = torch.cuda.is_available()
+    # GPU: gộp thẳng bằng fp16. CPU (vd. Mac): gộp bằng fp32 rồi ép về fp16 (gộp fp16 trên CPU rất chậm).
+    model = AutoModelForCausalLM.from_pretrained(args.llm_base, torch_dtype=torch.float16 if use_cuda else torch.float32,
                                                  low_cpu_mem_usage=True, local_files_only=True,
-                                                 device_map="cuda" if torch.cuda.is_available() else None)
+                                                 device_map="cuda" if use_cuda else None)
     model = PeftModel.from_pretrained(model, args.adapter, is_trainable=False).merge_and_unload()
+    if not use_cuda:
+        model = model.to(torch.float16)
     model.save_pretrained(llm_out, safe_serialization=True, max_shard_size="5GB")
     AutoTokenizer.from_pretrained(args.llm_base, local_files_only=True).save_pretrained(llm_out)
 

@@ -35,3 +35,6 @@ __pycache__/
 !/docker_submission/saved_models/README.txt
 /zac2026_*.tar.gz
 /zac2026_*.md5
+/.done_mac/
+/.venv_mac/
+/mac_build.log
