@@ -79,10 +79,15 @@ def _action_for_step(agent, env, sample, transcript, catalog, transcripts, resul
     if profile is not None:
         profile["policy_seconds"] += time.perf_counter() - started
     if not _valid_action(action):
+        if profile is not None:
+            stopped = bool(action) and action.get("action") == "stop"
+            profile["end_reason"] = "stop" if stopped else "parse_failure"
         return None
     validation = _validate_action(env, action, profile)
     if validation.get("ok"):
         return action
+    if profile is not None:
+        profile["schema_retries"] = profile.get("schema_retries", 0) + 1
     feedback = json.dumps({"rejected_call": action, "schema_error": validation.get("error")}, ensure_ascii=False)
     started = time.perf_counter()
     corrected = _next_action(
@@ -91,8 +96,14 @@ def _action_for_step(agent, env, sample, transcript, catalog, transcripts, resul
     if profile is not None:
         profile["policy_seconds"] += time.perf_counter() - started
     if not _valid_action(corrected):
+        if profile is not None:
+            profile["end_reason"] = "retry_not_a_call"
         return None
-    return corrected if _validate_action(env, corrected, profile).get("ok") else None
+    if _validate_action(env, corrected, profile).get("ok"):
+        return corrected
+    if profile is not None:
+        profile["end_reason"] = "schema_rejected_after_retry"
+    return None
 
 
 def _run_actions(env, sample, transcript, catalog, transcripts, prior_results, agent, max_steps, profile):
@@ -107,6 +118,8 @@ def _run_actions(env, sample, transcript, catalog, transcripts, prior_results, a
         if profile is not None:
             profile["tool_seconds"] += time.perf_counter() - started
         prior_results.append(result)
+    if profile is not None:
+        profile["end_reason"] = "max_steps"
 
 
 def infer_one(
@@ -129,11 +142,14 @@ def infer_one(
         transcript, transcripts = _transcribe_sample(sample, split_paths.split_dir, asr)
         if profile is not None:
             profile["asr_seconds"] = time.perf_counter() - phase_started
+            profile["transcript"] = transcript
         _run_actions(
             env, sample, transcript, catalog, transcripts, [], agent, max_tool_steps, profile
         )
     except Exception as error:
         print(f"sample={sample['id']} error={type(error).__name__}: {error}", file=sys.stderr)
+        if profile is not None:
+            profile["end_reason"] = f"exception:{type(error).__name__}"
     result = (env.get_tool_calls(), env.get_state_hash())
     if profile is not None:
         profile["total_seconds"] = time.perf_counter() - started

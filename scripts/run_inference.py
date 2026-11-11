@@ -21,7 +21,11 @@ def main() -> None:
     parser.add_argument("--llm-model")
     parser.add_argument("--adapter")
     parser.add_argument("--allow-cpu", action="store_true")
+    parser.add_argument("--asr-cache", help="Optional JSON file that memoises ASR transcripts across runs")
     args = parser.parse_args()
+    if args.asr_cache:
+        import os
+        os.environ["LIFEMATE_ASR_CACHE"] = str(Path(args.asr_cache).resolve())
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
     run_inference(
         args.data,
