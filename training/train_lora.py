@@ -98,6 +98,17 @@ def parse_args():
     parser.add_argument("--preflight-only", action="store_true", help="Check data/tokenizer without loading model or CUDA")
     parser.add_argument("--preflight-report")
     parser.add_argument("--resume-from-checkpoint")
+    parser.add_argument("--warm-start-adapter",
+                        help="Start a NEW run (fresh optimizer/scheduler/early-stopping) from saved LoRA weights; "
+                             "not a true resume. Mutually exclusive with --resume-from-checkpoint.")
+    parser.add_argument("--max-steps", type=int, default=0,
+                        help="If >0, stop after this many optimizer steps and size the cosine schedule to it")
+    parser.add_argument("--save-total-limit", type=int, default=3,
+                        help="How many checkpoints Trainer keeps (default 3, unchanged)")
+    parser.add_argument("--no-load-best", action="store_true",
+                        help="Keep the last-step weights as final instead of reloading the lowest-eval-loss checkpoint")
+    parser.add_argument("--no-gradient-checkpointing", action="store_true",
+                        help="Faster but needs far more VRAM (about 80 GB for 8K tokens); default keeps checkpointing on")
     parser.add_argument("--save-steps", type=int, default=0,
                         help="Optional maximum checkpoint interval; default derives it from evals per epoch")
     parser.add_argument("--longest-first", action="store_true", help="Smoke: exercise longest training record first")
@@ -109,6 +120,10 @@ def parse_args():
         parser.error("save, accumulation, LoRA, eval and patience values must be positive")
     if args.save_steps < 0:
         parser.error("save steps must be zero (automatic) or positive")
+    if args.max_steps < 0 or args.save_total_limit < 1:
+        parser.error("max steps must be >= 0 and save-total-limit >= 1")
+    if args.warm_start_adapter and args.resume_from_checkpoint:
+        parser.error("--warm-start-adapter and --resume-from-checkpoint are mutually exclusive")
     if not 0 <= args.lora_dropout < 1 or args.early_stopping_threshold < 0:
         parser.error("LoRA dropout must be in [0, 1) and early-stopping threshold non-negative")
     return args
@@ -193,7 +208,7 @@ def load_quantized_model(model_path: str, compute_dtype, args):
         attn_implementation="sdpa",
     )
     base = prepare_model_for_kbit_training(
-        base, use_gradient_checkpointing=True,
+        base, use_gradient_checkpointing=not args.no_gradient_checkpointing,
         gradient_checkpointing_kwargs={"use_reentrant": False},
     )
     base.config.use_cache = False
@@ -202,7 +217,19 @@ def load_quantized_model(model_path: str, compute_dtype, args):
         lora_dropout=args.lora_dropout, bias="none", task_type="CAUSAL_LM",
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
-    model = get_peft_model(base, adapter_config)
+    if args.warm_start_adapter:
+        from peft import PeftModel
+
+        saved = json.loads((Path(args.warm_start_adapter) / "adapter_config.json").read_text(encoding="utf-8"))
+        if (saved["r"], saved["lora_alpha"]) != (args.lora_rank, args.lora_alpha):
+            raise ValueError(
+                f"Adapter has r={saved['r']}, alpha={saved['lora_alpha']} but arguments request "
+                f"r={args.lora_rank}, alpha={args.lora_alpha}; use the adapter's values for a warm start"
+            )
+        model = PeftModel.from_pretrained(base, args.warm_start_adapter, is_trainable=True)
+        print(f"Warm start from adapter {args.warm_start_adapter} (fresh optimizer/scheduler)", flush=True)
+    else:
+        model = get_peft_model(base, adapter_config)
     model.print_trainable_parameters()
     return model
 
@@ -213,6 +240,7 @@ def make_training_args(args, compute_dtype, torch, eval_steps):
     return TrainingArguments(
         output_dir=args.output_dir,
         num_train_epochs=args.epochs,
+        max_steps=args.max_steps if args.max_steps > 0 else -1,
         per_device_train_batch_size=1,
         per_device_eval_batch_size=1,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -224,11 +252,11 @@ def make_training_args(args, compute_dtype, torch, eval_steps):
         eval_steps=eval_steps,
         save_strategy="steps",
         save_steps=eval_steps,
-        save_total_limit=3,
-        load_best_model_at_end=True,
+        save_total_limit=args.save_total_limit,
+        load_best_model_at_end=not args.no_load_best,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
-        gradient_checkpointing=True,
+        gradient_checkpointing=not args.no_gradient_checkpointing,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         bf16=compute_dtype == torch.bfloat16,
         fp16=compute_dtype == torch.float16,

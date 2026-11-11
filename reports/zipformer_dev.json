@@ -1,0 +1,10 @@
+{
+  "samples": 154,
+  "corpus_wer_zipformer": 0.1888235294117647,
+  "corpus_wer_large_ft": 0.1038235294117647,
+  "corpus_wer_best_of_two_per_sample": 0.09382352941176471,
+  "zipformer_better": 20,
+  "large_ft_better": 106,
+  "tie": 28,
+  "note": "WER uses lowercase + punctuation stripped; digits vs spelled-out numbers count as errors for both models."
+}

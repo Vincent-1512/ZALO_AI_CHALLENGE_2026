@@ -69,6 +69,42 @@ def changed_apps_match(predicted_state: dict, gold_state: dict, state_hash) -> b
     return all(state_hash({app: predicted_state.get(app)}) == state_hash({app: state}) for app, state in gold_state.items())
 
 
+def official_score(predicted_calls: list, gold_calls: list, matched: int, hash_ok: bool) -> float:
+    """Per-sample score from the published formula (Evaluation tab, 09/11/2026)."""
+    if not gold_calls:
+        return 1.0 if not predicted_calls else 0.0
+    if not hash_ok or matched == 0:
+        return 0.0
+    unmatched = len(predicted_calls) - matched
+    precision = matched / (matched + unmatched)
+    recall = matched / len(gold_calls)
+    return 2 * precision * recall / (precision + recall)
+
+
+def gold_state_hash(tool_env, split, sample) -> str:
+    """Hash of the state reached by replaying the gold calls in a fresh ToolEnv (the organisers' reference)."""
+    env = tool_env(split.split_name, sample["id"], root=split.env_root)
+    for call in sample["label"]["tool_calls"]:
+        env.call(call["name"], call.get("arguments", {}))
+    return env.get_state_hash()
+
+
+class OracleRecognizer:
+    """Dev-only diagnostic: returns the gold transcript for each audio file (separates ASR errors from policy errors)."""
+
+    def __init__(self, rows, split_dir):
+        from lifemate.data import resolve_audio_path
+        self.text = {}
+        for row in rows:
+            self.text[str(resolve_audio_path(row["audio"], split_dir))] = row["audio_text"]
+            for turn in row.get("history", []):
+                if turn.get("role") == "user" and turn.get("audio"):
+                    self.text[str(resolve_audio_path(turn["audio"], split_dir))] = turn["audio_text"]
+
+    def transcribe_many(self, paths, max_new_tokens=128):
+        return [self.text[str(path)] for path in paths]
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate one model on the fixed train-dev split.")
     parser.add_argument("--data-root", default="data/raw/train+public_test")
@@ -79,6 +115,12 @@ def parse_args():
     parser.add_argument("--adapter")
     parser.add_argument("--limit-samples", type=int, default=0)
     parser.add_argument("--report", default="reports/runs/dev_metrics.json")
+    parser.add_argument("--per-sample-log", help="Write one JSON line per dev sample (ASR text, gold vs predicted calls, end reason)")
+    parser.add_argument("--asr-cache", help="Optional JSON file that memoises ASR transcripts across evaluations")
+    parser.add_argument("--asr-correct", action="store_true", help="Repair ASR spans from sample context")
+    parser.add_argument("--oracle-transcript", action="store_true", help="Diagnostic only: use gold audio_text instead of ASR")
+    parser.add_argument("--num-samples", type=int, default=1, help="Best-of-k action candidates per step")
+    parser.add_argument("--temperature", type=float, help="Sampling temperature; only with --num-samples > 1")
     return parser.parse_args()
 
 
@@ -115,20 +157,34 @@ def load_agent(config: dict, args):
 
 
 def evaluate_sample(sample, runtime):
-    tool_env, split, catalog, index, state_hash, asr, agent, max_steps = runtime
+    tool_env, split, catalog, index, state_hash, asr, agent, max_steps, asr_correct, num_samples, temperature = runtime
     profile = {}
     calls, _, env = infer_one(
         sample, tool_env, split, catalog, asr, agent, max_steps,
-        return_env_for_train_eval=True, profile=profile,
+        return_env_for_train_eval=True, profile=profile, asr_correct=asr_correct,
+        num_samples=num_samples, temperature=temperature,
     )
     expected = sample["label"]["tool_calls"]
+    matched = maximum_matching(calls, expected, index)
+    hash_ok = env.get_state_hash() == gold_state_hash(tool_env, split, sample)
     return {
+        "official_score": official_score(calls, expected, matched, hash_ok),
+        "hash_match": hash_ok,
+        "id": sample["id"],
         "state_match": changed_apps_match(env.get_state(), sample["label"]["final_state"], state_hash),
-        "matched_calls": maximum_matching(calls, expected, index),
+        "matched_calls": matched,
         "predicted_calls": len(calls),
         "gold_calls": len(expected),
         "oos_exact": not calls if not expected else None,
         "profile": profile,
+        "detail": {
+            "asr_text": profile.get("transcript"),
+            "gold_text": sample.get("audio_text"),
+            "end_reason": profile.get("end_reason", "unknown"),
+            "schema_retries": profile.get("schema_retries", 0),
+            "gold_calls": expected,
+            "predicted_calls": calls,
+        },
     }
 
 
@@ -158,7 +214,18 @@ def build_report(results: list[dict]) -> dict:
     recall = matches / gold if gold else 0.0
     oos = [row["oos_exact"] for row in results if row["oos_exact"] is not None]
     profiles = [row["profile"] for row in results]
+    end_reasons: dict[str, int] = {}
+    for row in results:
+        reason = row["profile"].get("end_reason", "unknown")
+        end_reasons[reason] = end_reasons.get(reason, 0) + 1
     return {
+        "official_score_100": 100 * sum(row["official_score"] for row in results) / samples,
+        "full_hash_match_rate": sum(row["hash_match"] for row in results) / samples,
+        "end_reason_counts": end_reasons,
+        "state_match_count": sum(row["state_match"] for row in results),
+        "empty_prediction_samples": sum(1 for row in results if row["predicted_calls"] == 0),
+        "empty_gold_samples": sum(1 for row in results if row["gold_calls"] == 0),
+        "schema_retry_total": sum(row["profile"].get("schema_retries", 0) for row in results),
         "split": "train-dev",
         "samples": samples,
         "changed_app_state_match_rate": sum(row["state_match"] for row in results) / samples,
@@ -171,31 +238,59 @@ def build_report(results: list[dict]) -> dict:
         "oos_samples": len(oos),
         "oos_exact_rate": sum(oos) / len(oos) if oos else None,
         "latency_seconds": latency_summary(profiles),
-        "note": "Call F1 is a local diagnostic; the full official combined-score formula is not available in text form.",
+        "note": "official_score_100 follows the published per-sample formula (full-state hash AND call F1); gold hash is from replaying gold calls. State-match is a lenient diagnostic (changed apps only).",
     }
 
 
 def main() -> None:
     args = parse_args()
+    if args.num_samples < 1:
+        raise ValueError("--num-samples must be >= 1")
+    if args.temperature is not None and (args.num_samples == 1 or args.temperature <= 0):
+        raise ValueError("--temperature must be positive and requires --num-samples > 1")
     import torch
 
     if not torch.cuda.is_available():
         raise RuntimeError("Train-dev rollout requires a CUDA GPU.")
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    if args.asr_cache:
+        os.environ["LIFEMATE_ASR_CACHE"] = str(Path(args.asr_cache).resolve())
     config, split, tool_env, catalog, index, state_hash, rows = load_evaluation_data(args)
     if args.limit_samples > 0:
         rows = rows[: args.limit_samples]
         print(f"Evaluating first {len(rows)} dev samples", flush=True)
     asr, agent = load_agent(config, args)
-    runtime = (tool_env, split, catalog, index, state_hash, asr, agent, config["limits"]["max_tool_steps"])
+    if args.oracle_transcript:
+        asr = OracleRecognizer(rows, split.split_dir)
+        print("ORACLE transcripts: ASR bypassed (diagnostic, not a valid score)", flush=True)
+    runtime = (tool_env, split, catalog, index, state_hash, asr, agent,
+               config["limits"]["max_tool_steps"], args.asr_correct, args.num_samples, args.temperature)
     results = []
     started = time.perf_counter()
+    log_stream = None
+    if args.per_sample_log:
+        Path(args.per_sample_log).parent.mkdir(parents=True, exist_ok=True)
+        log_stream = Path(args.per_sample_log).open("w", encoding="utf-8")
     for sample_index, row in enumerate(rows, start=1):
-        results.append(evaluate_sample(row, runtime))
+        outcome = evaluate_sample(row, runtime)
+        results.append(outcome)
+        if log_stream:
+            record = {key: outcome[key] for key in ("id", "state_match", "hash_match", "official_score", "matched_calls", "predicted_calls", "gold_calls")}
+            record.update(outcome["detail"])
+            if args.asr_correct:
+                record["asr_corrections"] = outcome["profile"].get("asr_corrections", [])
+            if args.num_samples > 1:
+                record["candidate_valid_count"] = outcome["profile"].get("candidate_valid_count", 0)
+                record["candidate_agreement"] = outcome["profile"].get("candidate_agreement", [])
+            record["total_seconds"] = round(outcome["profile"].get("total_seconds", 0.0), 3)
+            log_stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+            log_stream.flush()
         if sample_index % 10 == 0 or sample_index == len(rows):
             elapsed = time.perf_counter() - started
             print(f"evaluated={sample_index}/{len(rows)} elapsed_seconds={elapsed:.1f}", flush=True)
+    if log_stream:
+        log_stream.close()
     report = build_report(results)
     path = Path(args.report)
     path.parent.mkdir(parents=True, exist_ok=True)
